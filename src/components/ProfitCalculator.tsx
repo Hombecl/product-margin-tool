@@ -54,8 +54,9 @@ const ProfitCalculator = () => {
     baseId: '',
     tableName: 'Product Research'
   });
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error' | 'duplicate'>('idle');
   const [hasEnvConfig, setHasEnvConfig] = useState(false);
+  const [duplicateInfo, setDuplicateInfo] = useState<{ message: string; productId: string } | null>(null);
 
   // Constants
   const SHIPPING_FEE = 2.50;
@@ -153,6 +154,7 @@ const ProfitCalculator = () => {
     setAmzCategoryApproval('Grocery');
     setIsCustomCategory(false);
     setSaveStatus('idle');
+    setDuplicateInfo(null);
   };
 
   // --- FUNCTION: Save to Airtable ---
@@ -167,6 +169,7 @@ const ProfitCalculator = () => {
     }
 
     setSaveStatus('saving');
+    setDuplicateInfo(null);
 
     const payload: Record<string, unknown> = {
       "Lister": lister,
@@ -193,6 +196,8 @@ const ProfitCalculator = () => {
         },
         body: JSON.stringify({
           fields: payload,
+          supplierLink: supplierLink,
+          platform: platform,
           // Only send custom config if env vars aren't configured
           customConfig: !hasEnvConfig ? airtableConfig : undefined
         })
@@ -205,6 +210,13 @@ const ProfitCalculator = () => {
         const nextSku = incrementSku(sku);
         setSku(nextSku);
         setTimeout(() => setSaveStatus('idle'), 3000);
+      } else if (result.isDuplicate) {
+        // Handle duplicate product
+        setSaveStatus('duplicate');
+        setDuplicateInfo({
+          message: result.message,
+          productId: result.productId
+        });
       } else {
         console.error("Airtable Error:", result);
         setSaveStatus('error');
@@ -580,7 +592,29 @@ const ProfitCalculator = () => {
                 </div>
               )}
 
-              {metrics.verdict !== 'bad' && (
+              {/* Duplicate Warning */}
+              {saveStatus === 'duplicate' && duplicateInfo && (
+                <div className="bg-amber-50 border border-amber-300 rounded-xl p-3 space-y-2">
+                  <div className="flex items-start gap-2 text-amber-800">
+                    <AlertTriangle size={18} className="flex-shrink-0 mt-0.5" />
+                    <div>
+                      <div className="font-bold text-sm">Duplicate Product</div>
+                      <div className="text-xs mt-1">{duplicateInfo.message}</div>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setSaveStatus('idle');
+                      setDuplicateInfo(null);
+                    }}
+                    className="w-full py-2 bg-amber-200 text-amber-800 rounded-lg text-xs font-bold hover:bg-amber-300 transition-colors"
+                  >
+                    Got it, I&apos;ll check another product
+                  </button>
+                </div>
+              )}
+
+              {metrics.verdict !== 'bad' && saveStatus !== 'duplicate' && (
                 <button
                   onClick={handleSaveToAirtable}
                   disabled={saveStatus === 'saving' || saveStatus === 'success'}
@@ -600,7 +634,7 @@ const ProfitCalculator = () => {
                 </button>
               )}
 
-              {metrics.verdict !== 'bad' && (
+              {metrics.verdict !== 'bad' && saveStatus !== 'duplicate' && (
                 <div className="text-xs text-slate-400 text-center flex items-center justify-center gap-1">
                   <span>Saving to</span>
                   <span className={`font-bold ${platform === 'Amazon' ? 'text-orange-500' : 'text-blue-500'}`}>{platform}</span>
