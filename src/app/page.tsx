@@ -1,5 +1,10 @@
 import ProfitCalculator from '@/components/ProfitCalculator';
+import LoginGate from '@/components/LoginGate';
 
 export default function Home() {
-  return <ProfitCalculator />;
+  return (
+    <LoginGate>
+      <ProfitCalculator />
+    </LoginGate>
+  );
 }

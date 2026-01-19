@@ -1,6 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { cookies } from 'next/headers';
+
+const AUTH_COOKIE_NAME = 'profit-scout-auth';
+
+// Verify authentication
+async function isAuthenticated(): Promise<boolean> {
+  const correctPassword = process.env.APP_PASSWORD;
+  if (!correctPassword) return false;
+
+  const cookieStore = await cookies();
+  const authCookie = cookieStore.get(AUTH_COOKIE_NAME);
+  const expectedToken = Buffer.from(correctPassword).toString('base64');
+
+  return authCookie?.value === expectedToken;
+}
 
 export async function POST(request: NextRequest) {
+  // Check authentication first
+  if (!(await isAuthenticated())) {
+    return NextResponse.json(
+      { error: 'Unauthorized' },
+      { status: 401 }
+    );
+  }
+
   try {
     const body = await request.json();
     const { fields, customConfig } = body;
@@ -58,6 +81,14 @@ export async function POST(request: NextRequest) {
 
 // Health check endpoint - returns whether env vars are configured
 export async function GET() {
+  // Check authentication first
+  if (!(await isAuthenticated())) {
+    return NextResponse.json(
+      { error: 'Unauthorized' },
+      { status: 401 }
+    );
+  }
+
   const hasEnvConfig = !!(process.env.AIRTABLE_API_KEY && process.env.AIRTABLE_BASE_ID);
 
   return NextResponse.json({
