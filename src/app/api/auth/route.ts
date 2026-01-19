@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
 
 const AUTH_COOKIE_NAME = 'profit-scout-auth';
-const COOKIE_MAX_AGE = 60 * 60 * 24 * 30; // 30 days
+const COOKIE_MAX_AGE = 60 * 60 * 24; // 1 day
 
 export async function POST(request: NextRequest) {
   try {
