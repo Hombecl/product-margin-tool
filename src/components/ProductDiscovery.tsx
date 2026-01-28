@@ -1204,7 +1204,7 @@ export default function ProductDiscovery() {
                   )}
                 </div>
 
-                {/* Brand Filter Dropdown */}
+                {/* Brand Filter Dropdown with Checkboxes */}
                 {detectedBrands.length > 0 && (
                   <div className="relative">
                     <button
@@ -1212,30 +1212,63 @@ export default function ProductDiscovery() {
                       className="flex items-center gap-2 px-3 py-1.5 text-sm bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200"
                     >
                       <Filter size={14} />
-                      Exclude Brand
+                      Filter Brands
+                      {excludedBrands.length > 0 && (
+                        <span className="bg-red-500 text-white text-xs px-1.5 rounded-full">
+                          {excludedBrands.length}
+                        </span>
+                      )}
                       <ChevronDown size={14} />
                     </button>
                     {showBrandDropdown && (
-                      <div className="absolute right-0 top-full mt-1 w-64 bg-white rounded-lg shadow-lg border border-slate-200 z-10 max-h-64 overflow-y-auto">
-                        <div className="p-2 border-b border-slate-100">
-                          <p className="text-xs text-slate-500">Click to exclude brand from results</p>
-                        </div>
-                        {detectedBrands.map(({ brand, count }) => (
+                      <div className="absolute right-0 top-full mt-1 w-72 bg-white rounded-lg shadow-lg border border-slate-200 z-10 max-h-80 overflow-y-auto">
+                        <div className="p-2 border-b border-slate-100 flex justify-between items-center sticky top-0 bg-white">
+                          <p className="text-xs text-slate-500">Check brands to exclude</p>
                           <button
-                            key={brand}
-                            onClick={() => {
-                              if (!excludedBrands.includes(brand)) {
-                                setExcludedBrands(prev => [...prev, brand]);
-                              }
-                              setShowBrandDropdown(false);
-                            }}
-                            disabled={excludedBrands.some(b => b.toLowerCase() === brand.toLowerCase())}
-                            className="w-full px-3 py-2 text-left text-sm hover:bg-slate-50 flex justify-between items-center disabled:opacity-50 disabled:bg-red-50"
+                            onClick={() => setShowBrandDropdown(false)}
+                            className="text-slate-400 hover:text-slate-600"
                           >
-                            <span>{brand}</span>
-                            <span className="text-xs text-slate-400">{count} items</span>
+                            <X size={16} />
                           </button>
-                        ))}
+                        </div>
+                        {detectedBrands.map(({ brand, count }) => {
+                          const isExcluded = excludedBrands.some(b => b.toLowerCase() === brand.toLowerCase());
+                          return (
+                            <label
+                              key={brand}
+                              className={`w-full px-3 py-2 text-sm hover:bg-slate-50 flex items-center gap-3 cursor-pointer ${
+                                isExcluded ? 'bg-red-50' : ''
+                              }`}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isExcluded}
+                                onChange={() => {
+                                  if (isExcluded) {
+                                    setExcludedBrands(prev => prev.filter(b => b.toLowerCase() !== brand.toLowerCase()));
+                                  } else {
+                                    setExcludedBrands(prev => [...prev, brand]);
+                                  }
+                                }}
+                                className="w-4 h-4 rounded border-slate-300 text-red-600 focus:ring-red-500"
+                              />
+                              <span className={`flex-1 ${isExcluded ? 'text-red-700 line-through' : ''}`}>
+                                {brand}
+                              </span>
+                              <span className="text-xs text-slate-400">{count}</span>
+                            </label>
+                          );
+                        })}
+                        {excludedBrands.length > 0 && (
+                          <div className="p-2 border-t border-slate-100 sticky bottom-0 bg-white">
+                            <button
+                              onClick={() => setExcludedBrands([])}
+                              className="w-full text-xs text-blue-600 hover:text-blue-700 py-1"
+                            >
+                              Clear all exclusions
+                            </button>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
