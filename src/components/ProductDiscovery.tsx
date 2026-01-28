@@ -118,8 +118,10 @@ export default function ProductDiscovery() {
   // Settings state
   const [showSettings, setShowSettings] = useState(false);
   const [additionalCost, setAdditionalCost] = useState(4.50);
+  const [targetMarginPercent, setTargetMarginPercent] = useState(15);
   const [targetProductCount, setTargetProductCount] = useState(100);
   const [autoFetchPages, setAutoFetchPages] = useState(false);
+  const [platformFeePercent, setPlatformFeePercent] = useState(10.5);
 
   // Category state
   const [categories, setCategories] = useState<Category[]>([]);
@@ -141,6 +143,7 @@ export default function ProductDiscovery() {
   // Brand exclusion state
   const [excludedBrands, setExcludedBrands] = useState<string[]>(DEFAULT_EXCLUDED_BRANDS);
   const [newExcludedBrand, setNewExcludedBrand] = useState('');
+  const [showBrandDropdown, setShowBrandDropdown] = useState(false);
 
   // UI state
   const [loading, setLoading] = useState(false);
@@ -226,7 +229,9 @@ export default function ProductDiscovery() {
           sortBy,
           page: pageNum,
           checkDuplicates: true,
-          additionalCost  // Pass custom cost setting
+          additionalCost,
+          targetMarginPercent,
+          platformFeePercent
         })
       });
 
@@ -308,7 +313,9 @@ export default function ProductDiscovery() {
             sortBy,
             page,
             checkDuplicates: true,
-            additionalCost
+            additionalCost,
+            targetMarginPercent,
+            platformFeePercent
           })
         });
 
@@ -499,6 +506,40 @@ export default function ProductDiscovery() {
   // Get filtered products (excluding brands)
   const filteredProducts = products.filter(p => !isExcludedBrand(p.title));
 
+  // Extract unique brands from products for dropdown
+  const detectedBrands = React.useMemo(() => {
+    const brandCounts = new Map<string, number>();
+
+    products.forEach(p => {
+      // Try to extract brand from title - usually first word(s) before product type
+      const title = p.title;
+
+      // Common patterns: "Brand Name - Product" or "Brand Name Product Type"
+      const patterns = [
+        /^([A-Z][a-zA-Z']+(?:\s+[A-Z][a-zA-Z']+)?)\s+[-–]/,  // "Brand Name -"
+        /^([A-Z][a-zA-Z']+(?:'s)?)\s+/,  // "Brand's " or "Brand "
+      ];
+
+      for (const pattern of patterns) {
+        const match = title.match(pattern);
+        if (match && match[1] && match[1].length > 2 && match[1].length < 25) {
+          const brand = match[1].trim();
+          brandCounts.set(brand, (brandCounts.get(brand) || 0) + 1);
+          break;
+        }
+      }
+    });
+
+    // Return brands sorted by frequency, min 2 occurrences
+    return Array.from(brandCounts.entries())
+      .filter(([_, count]) => count >= 2)
+      .sort((a, b) => b[1] - a[1])
+      .map(([brand, count]) => ({ brand, count }));
+  }, [products]);
+
+  // Calculate margin divisor from settings
+  const marginDivisor = 1 - (platformFeePercent / 100) - (targetMarginPercent / 100);
+
   // Add new brand to exclusion list
   const addExcludedBrand = () => {
     if (newExcludedBrand.trim() && !excludedBrands.includes(newExcludedBrand.trim())) {
@@ -641,8 +682,8 @@ export default function ProductDiscovery() {
     setReviewProducts([]);
   };
 
-  // Add selected products (direct add without details - legacy)
-  const handleAddProducts = async () => {
+  // Quick Add - directly add to Airtable without fetching details (UPC will be fetched by n8n workflow)
+  const handleQuickAdd = async () => {
     if (selectedProducts.size === 0) {
       setError('Please select at least one product');
       return;
@@ -653,7 +694,12 @@ export default function ProductDiscovery() {
     setSuccess('');
 
     try {
-      const productsToAdd = filteredProducts.filter(p => selectedProducts.has(p.id));
+      const productsToAdd = filteredProducts.filter(p => selectedProducts.has(p.id) && !p.isExisting);
+
+      if (productsToAdd.length === 0) {
+        setError('All selected products already exist in Airtable');
+        return;
+      }
 
       const res = await fetch('/api/discovery/add', {
         method: 'POST',
@@ -662,7 +708,7 @@ export default function ProductDiscovery() {
           products: productsToAdd,
           store,
           discoverySource: lastSearchSource,
-          discoveryTags: searchMode === 'category' ? ['Bestseller'] : [],
+          discoveryTags: searchMode === 'category' ? ['Bestseller'] : ['Quick Add'],
           operator: operator.trim(),
           sessionId
         })
@@ -674,11 +720,11 @@ export default function ProductDiscovery() {
         throw new Error(data.error || 'Failed to add products');
       }
 
-      setSuccess(data.message);
+      setSuccess(`${data.message} - Use n8n workflow to fetch UPC details.`);
 
       // Remove added products from the list
       const addedIds = new Set(productsToAdd.map(p => p.id));
-      setProducts(prev => prev.filter(p => !addedIds.has(p.id) || data.skipped > 0));
+      setProducts(prev => prev.filter(p => !addedIds.has(p.id)));
       setSelectedProducts(new Set());
 
       fetchStats();
@@ -686,6 +732,18 @@ export default function ProductDiscovery() {
       setError(err instanceof Error ? err.message : 'Failed to add products');
     } finally {
       setAdding(false);
+    }
+  };
+
+  // Trigger n8n workflow to fetch UPC details for products in Airtable
+  const handleTriggerWorkflow = async () => {
+    // This will call an API that triggers the n8n workflow
+    try {
+      setSuccess('Workflow trigger not yet configured. Please run the n8n workflow manually.');
+      // TODO: Add actual webhook trigger when n8n workflow is set up
+      // const res = await fetch('/api/discovery/trigger-workflow', { method: 'POST' });
+    } catch (err) {
+      setError('Failed to trigger workflow');
     }
   };
 
@@ -732,7 +790,7 @@ export default function ProductDiscovery() {
         {showSettings && (
           <div className="bg-white rounded-xl border border-slate-200 p-5 mb-6">
             <h2 className="font-bold text-slate-800 mb-4">Settings</h2>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">
                   Additional Cost ($)
@@ -745,11 +803,41 @@ export default function ProductDiscovery() {
                   onChange={(e) => setAdditionalCost(Number(e.target.value))}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
-                <p className="text-xs text-slate-500 mt-1">Added to cost for margin calc</p>
+                <p className="text-xs text-slate-500 mt-1">Added to cost</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-slate-700 mb-1">
-                  Target Product Count
+                  Target Margin (%)
+                </label>
+                <input
+                  type="number"
+                  step="1"
+                  min="5"
+                  max="50"
+                  value={targetMarginPercent}
+                  onChange={(e) => setTargetMarginPercent(Number(e.target.value))}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="text-xs text-slate-500 mt-1">Your profit margin</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Platform Fee (%)
+                </label>
+                <input
+                  type="number"
+                  step="0.5"
+                  min="0"
+                  max="30"
+                  value={platformFeePercent}
+                  onChange={(e) => setPlatformFeePercent(Number(e.target.value))}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="text-xs text-slate-500 mt-1">Amazon/platform fee</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Target Products
                 </label>
                 <input
                   type="number"
@@ -760,15 +848,15 @@ export default function ProductDiscovery() {
                   onChange={(e) => setTargetProductCount(Number(e.target.value))}
                   className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
-                <p className="text-xs text-slate-500 mt-1">For auto multi-page search</p>
+                <p className="text-xs text-slate-500 mt-1">For auto-fetch</p>
               </div>
-              <div className="col-span-2">
+              <div>
                 <label className="block text-sm font-medium text-slate-700 mb-2">
                   Margin Formula
                 </label>
-                <div className="bg-slate-100 rounded-lg p-3 text-sm font-mono">
-                  <div>Selling Price = (Cost + ${additionalCost.toFixed(2)}) / 0.745</div>
-                  <div className="text-slate-500 mt-1">Platform fee: 10.5% | Target margin: 15%</div>
+                <div className="bg-slate-100 rounded-lg p-2 text-xs font-mono">
+                  <div>Sell = (Cost + ${additionalCost.toFixed(2)}) / {marginDivisor.toFixed(3)}</div>
+                  <div className="text-slate-500 mt-1">Fee: {platformFeePercent}% | Margin: {targetMarginPercent}%</div>
                 </div>
               </div>
             </div>
@@ -1087,28 +1175,75 @@ export default function ProductDiscovery() {
         {filteredProducts.length > 0 && (
           <>
             {/* Results Header */}
-            <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-              <div className="flex items-center gap-4 flex-wrap">
-                <h2 className="font-bold text-slate-800">
-                  Results ({filteredProducts.length} of {totalResults} products)
-                </h2>
-                <span className="text-sm text-slate-500 bg-slate-100 px-2 py-1 rounded">
-                  {lastSearchSource}
-                </span>
-                {/* Show excluded count */}
-                {products.length > filteredProducts.length && (
-                  <span className="text-sm text-red-600 bg-red-50 px-2 py-1 rounded border border-red-200">
-                    {products.length - filteredProducts.length} excluded (brand)
+            <div className="bg-white rounded-xl border border-slate-200 p-4 mb-4">
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <h2 className="font-bold text-slate-800">
+                    Showing {filteredProducts.length} products
+                  </h2>
+                  <span className="text-sm text-slate-500 bg-slate-100 px-2 py-1 rounded">
+                    {lastSearchSource}
                   </span>
-                )}
-                {/* Show existing products count */}
-                {filteredProducts.filter(p => p.isExisting).length > 0 && (
-                  <span className="text-sm text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-200">
-                    {filteredProducts.filter(p => p.isExisting).length} already in Airtable
-                  </span>
+                  {/* Show loaded vs total */}
+                  {products.length < totalResults && (
+                    <span className="text-sm text-blue-600 bg-blue-50 px-2 py-1 rounded border border-blue-200">
+                      {products.length} loaded / {totalResults} total
+                    </span>
+                  )}
+                  {/* Show excluded count */}
+                  {products.length > filteredProducts.length && (
+                    <span className="text-sm text-red-600 bg-red-50 px-2 py-1 rounded border border-red-200">
+                      {products.length - filteredProducts.length} hidden (excluded brands)
+                    </span>
+                  )}
+                  {/* Show existing products count */}
+                  {filteredProducts.filter(p => p.isExisting).length > 0 && (
+                    <span className="text-sm text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-200">
+                      {filteredProducts.filter(p => p.isExisting).length} in Airtable
+                    </span>
+                  )}
+                </div>
+
+                {/* Brand Filter Dropdown */}
+                {detectedBrands.length > 0 && (
+                  <div className="relative">
+                    <button
+                      onClick={() => setShowBrandDropdown(!showBrandDropdown)}
+                      className="flex items-center gap-2 px-3 py-1.5 text-sm bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200"
+                    >
+                      <Filter size={14} />
+                      Exclude Brand
+                      <ChevronDown size={14} />
+                    </button>
+                    {showBrandDropdown && (
+                      <div className="absolute right-0 top-full mt-1 w-64 bg-white rounded-lg shadow-lg border border-slate-200 z-10 max-h-64 overflow-y-auto">
+                        <div className="p-2 border-b border-slate-100">
+                          <p className="text-xs text-slate-500">Click to exclude brand from results</p>
+                        </div>
+                        {detectedBrands.map(({ brand, count }) => (
+                          <button
+                            key={brand}
+                            onClick={() => {
+                              if (!excludedBrands.includes(brand)) {
+                                setExcludedBrands(prev => [...prev, brand]);
+                              }
+                              setShowBrandDropdown(false);
+                            }}
+                            disabled={excludedBrands.some(b => b.toLowerCase() === brand.toLowerCase())}
+                            className="w-full px-3 py-2 text-left text-sm hover:bg-slate-50 flex justify-between items-center disabled:opacity-50 disabled:bg-red-50"
+                          >
+                            <span>{brand}</span>
+                            <span className="text-xs text-slate-400">{count} items</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 )}
               </div>
-              <div className="flex items-center gap-2 flex-wrap">
+
+              {/* Selection Actions Row */}
+              <div className="flex items-center gap-2 mt-3 pt-3 border-t border-slate-100 flex-wrap">
                 <button
                   onClick={selectAll}
                   className="text-sm text-blue-600 hover:text-blue-700 px-2 py-1 rounded hover:bg-blue-50"
@@ -1123,22 +1258,34 @@ export default function ProductDiscovery() {
                     Select New Only ({filteredProducts.filter(p => !p.isExisting).length})
                   </button>
                 )}
-                {/* Button to remove excluded brands from selection */}
-                {selectedProducts.size > 0 && products.some(p => isExcludedBrand(p.title) && selectedProducts.has(p.id)) && (
-                  <button
-                    onClick={deselectExcludedBrands}
-                    className="text-sm text-red-600 hover:text-red-700 px-2 py-1 rounded hover:bg-red-50 font-medium"
-                  >
-                    Remove Excluded Brands ({products.filter(p => isExcludedBrand(p.title) && selectedProducts.has(p.id)).length})
-                  </button>
+
+                <div className="flex-1" />
+
+                {/* Selected count */}
+                {selectedProducts.size > 0 && (
+                  <span className="text-sm text-slate-600 bg-slate-100 px-2 py-1 rounded">
+                    {selectedProducts.size} selected
+                  </span>
                 )}
+
+                {/* Quick Add - directly add without fetching details */}
+                <button
+                  onClick={handleQuickAdd}
+                  disabled={adding || selectedProducts.size === 0}
+                  className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors disabled:opacity-50 font-medium"
+                >
+                  {adding ? <Loader size={18} className="animate-spin" /> : <Plus size={18} />}
+                  Quick Add
+                </button>
+
+                {/* Get Details first */}
                 <button
                   onClick={handleGetDetails}
                   disabled={loadingDetails || selectedProducts.size === 0}
                   className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 font-medium"
                 >
                   {loadingDetails ? <Loader size={18} className="animate-spin" /> : <Info size={18} />}
-                  Get Details ({selectedProducts.size})
+                  Get Details
                 </button>
               </div>
             </div>

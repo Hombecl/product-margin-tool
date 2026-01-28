@@ -142,7 +142,11 @@ export async function POST(request: NextRequest) {
       sortBy = 'best_seller',  // 'best_match', 'best_seller', 'price_low', 'price_high'
       deliveryZip = DEFAULT_DELIVERY_ZIP,
       page = 1,  // Page number for pagination (1-indexed)
-      checkDuplicates = true  // Whether to check Airtable for existing products
+      checkDuplicates = true,  // Whether to check Airtable for existing products
+      // Custom pricing settings
+      additionalCost = 4.50,
+      targetMarginPercent = 15,
+      platformFeePercent = 10.5
     } = body;
 
     if (!query) {
@@ -195,12 +199,12 @@ export async function POST(request: NextRequest) {
     }
 
     // Calculate selling price for each product
-    // Formula: Selling Price = (Cost + $4.50) / (1 - 10.5% - 15%) = (Cost + $4.50) / 0.745
+    // Formula: Selling Price = (Cost + additionalCost) / (1 - platformFee% - targetMargin%)
+    const marginDivisor = 1 - (platformFeePercent / 100) - (targetMarginPercent / 100);
     const productsWithPricing = filteredProducts.map((product: WalmartProduct) => {
       const cost = product.price || 0;
-      const additionalCost = 4.50;
-      const sellingPrice = (cost + additionalCost) / 0.745;
-      const margin = sellingPrice - cost - additionalCost - (sellingPrice * 0.105);
+      const sellingPrice = (cost + additionalCost) / marginDivisor;
+      const margin = sellingPrice - cost - additionalCost - (sellingPrice * (platformFeePercent / 100));
       const marginPercent = (margin / sellingPrice) * 100;
 
       return {
