@@ -27,7 +27,9 @@ import {
   X,
   Users,
   Barcode,
-  ShoppingCart
+  ShoppingCart,
+  Settings,
+  Target
 } from 'lucide-react';
 
 interface Product {
@@ -112,6 +114,12 @@ export default function ProductDiscovery() {
   const [minRating, setMinRating] = useState(0);
   const [operator, setOperator] = useState('');
   const [sortBy, setSortBy] = useState<SortOption>('best_seller');
+
+  // Settings state
+  const [showSettings, setShowSettings] = useState(false);
+  const [additionalCost, setAdditionalCost] = useState(4.50);
+  const [targetProductCount, setTargetProductCount] = useState(100);
+  const [autoFetchPages, setAutoFetchPages] = useState(false);
 
   // Category state
   const [categories, setCategories] = useState<Category[]>([]);
@@ -217,7 +225,8 @@ export default function ProductDiscovery() {
           sessionId,
           sortBy,
           page: pageNum,
-          checkDuplicates: true
+          checkDuplicates: true,
+          additionalCost  // Pass custom cost setting
         })
       });
 
@@ -259,6 +268,91 @@ export default function ProductDiscovery() {
   const handleLoadMore = () => {
     if (hasMore && !loadingMore) {
       handleKeywordSearch(currentPage + 1, true);
+    }
+  };
+
+  // Auto-fetch multiple pages to reach target count
+  const handleAutoFetchPages = async () => {
+    if (!query.trim()) {
+      setError('Please enter a search query');
+      return;
+    }
+
+    if (!operator.trim()) {
+      setError('Please enter your name');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+    setSuccess('');
+    setProducts([]);
+    setSelectedProducts(new Set());
+
+    let allProducts: Product[] = [];
+    let page = 1;
+    const maxPages = Math.ceil(targetProductCount / 40); // ~40 products per page
+
+    try {
+      while (allProducts.length < targetProductCount && page <= maxPages) {
+        const res = await fetch('/api/discovery/search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            query: query.trim(),
+            maxPrice,
+            minRating,
+            store,
+            operator: operator.trim(),
+            sessionId,
+            sortBy,
+            page,
+            checkDuplicates: true,
+            additionalCost
+          })
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+          throw new Error(data.error || 'Search failed');
+        }
+
+        if (!data.products || data.products.length === 0) {
+          break; // No more products
+        }
+
+        // Deduplicate
+        const existingIds = new Set(allProducts.map(p => p.id));
+        const newProducts = data.products.filter((p: Product) => !existingIds.has(p.id));
+        allProducts = [...allProducts, ...newProducts];
+
+        setProducts([...allProducts]);
+        setTotalResults(data.totalResults || allProducts.length);
+        setCurrentPage(page);
+        setTotalPages(data.totalPages || page);
+
+        if (!data.hasMore) {
+          break; // No more pages
+        }
+
+        page++;
+
+        // Small delay between requests
+        if (page <= maxPages && allProducts.length < targetProductCount) {
+          await new Promise(resolve => setTimeout(resolve, 500));
+        }
+      }
+
+      setHasMore(false);
+      setLastSearchSource(`Keyword: ${query}`);
+      setSuccess(`Loaded ${allProducts.length} products from ${page} page(s)`);
+
+      fetchStats();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Search failed');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -367,21 +461,33 @@ export default function ProductDiscovery() {
     });
   };
 
-  // Select all products
+  // Select all filtered products (excluding brands already filtered out)
   const selectAll = () => {
-    if (selectedProducts.size === products.length) {
+    if (selectedProducts.size === filteredProducts.length) {
       setSelectedProducts(new Set());
     } else {
-      setSelectedProducts(new Set(products.map(p => p.id)));
+      setSelectedProducts(new Set(filteredProducts.map(p => p.id)));
     }
   };
 
-  // Select only new products (not in Airtable)
+  // Select only new products (not in Airtable, from filtered list)
   const selectNewOnly = () => {
-    const newProductIds = products
+    const newProductIds = filteredProducts
       .filter(p => !p.isExisting)
       .map(p => p.id);
     setSelectedProducts(new Set(newProductIds));
+  };
+
+  // Deselect products from excluded brands (for when user wants to clean up selection)
+  const deselectExcludedBrands = () => {
+    const excludedIds = new Set(
+      products.filter(p => isExcludedBrand(p.title)).map(p => p.id)
+    );
+    setSelectedProducts(prev => {
+      const next = new Set(prev);
+      excludedIds.forEach(id => next.delete(id));
+      return next;
+    });
   };
 
   // Check if product title contains excluded brand
@@ -604,14 +710,70 @@ export default function ProductDiscovery() {
               <p className="text-sm text-slate-500">Search Walmart and add products to your store</p>
             </div>
           </div>
-          <button
-            onClick={() => setShowStats(!showStats)}
-            className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors"
-          >
-            <BarChart3 size={18} />
-            Usage Stats
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowSettings(!showSettings)}
+              className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors"
+            >
+              <Settings size={18} />
+              Settings
+            </button>
+            <button
+              onClick={() => setShowStats(!showStats)}
+              className="flex items-center gap-2 px-4 py-2 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors"
+            >
+              <BarChart3 size={18} />
+              Stats
+            </button>
+          </div>
         </div>
+
+        {/* Settings Panel */}
+        {showSettings && (
+          <div className="bg-white rounded-xl border border-slate-200 p-5 mb-6">
+            <h2 className="font-bold text-slate-800 mb-4">Settings</h2>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Additional Cost ($)
+                </label>
+                <input
+                  type="number"
+                  step="0.50"
+                  min="0"
+                  value={additionalCost}
+                  onChange={(e) => setAdditionalCost(Number(e.target.value))}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="text-xs text-slate-500 mt-1">Added to cost for margin calc</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Target Product Count
+                </label>
+                <input
+                  type="number"
+                  step="50"
+                  min="40"
+                  max="500"
+                  value={targetProductCount}
+                  onChange={(e) => setTargetProductCount(Number(e.target.value))}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="text-xs text-slate-500 mt-1">For auto multi-page search</p>
+              </div>
+              <div className="col-span-2">
+                <label className="block text-sm font-medium text-slate-700 mb-2">
+                  Margin Formula
+                </label>
+                <div className="bg-slate-100 rounded-lg p-3 text-sm font-mono">
+                  <div>Selling Price = (Cost + ${additionalCost.toFixed(2)}) / 0.745</div>
+                  <div className="text-slate-500 mt-1">Platform fee: 10.5% | Target margin: 15%</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Stats Panel */}
         {showStats && stats && (
@@ -740,6 +902,15 @@ export default function ProductDiscovery() {
               >
                 {loading ? <Loader size={20} className="animate-spin" /> : <Search size={20} />}
                 Search
+              </button>
+              <button
+                onClick={handleAutoFetchPages}
+                disabled={loading}
+                className="flex items-center gap-2 px-4 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50 font-medium"
+                title={`Auto-fetch up to ${targetProductCount} products`}
+              >
+                {loading ? <Loader size={20} className="animate-spin" /> : <Target size={20} />}
+                Auto ({targetProductCount})
               </button>
             </div>
           )}
@@ -950,6 +1121,15 @@ export default function ProductDiscovery() {
                     className="text-sm text-emerald-600 hover:text-emerald-700 px-2 py-1 rounded hover:bg-emerald-50 font-medium"
                   >
                     Select New Only ({filteredProducts.filter(p => !p.isExisting).length})
+                  </button>
+                )}
+                {/* Button to remove excluded brands from selection */}
+                {selectedProducts.size > 0 && products.some(p => isExcludedBrand(p.title) && selectedProducts.has(p.id)) && (
+                  <button
+                    onClick={deselectExcludedBrands}
+                    className="text-sm text-red-600 hover:text-red-700 px-2 py-1 rounded hover:bg-red-50 font-medium"
+                  >
+                    Remove Excluded Brands ({products.filter(p => isExcludedBrand(p.title) && selectedProducts.has(p.id)).length})
                   </button>
                 )}
                 <button
