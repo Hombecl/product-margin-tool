@@ -31,7 +31,8 @@ export async function POST(request: NextRequest) {
     // Get Airtable config from environment
     const apiKey = process.env.AIRTABLE_API_KEY;
     const baseId = process.env.AIRTABLE_REPRICING_BASE_ID || process.env.AIRTABLE_BASE_ID;
-    const tableName = process.env.AIRTABLE_REPRICING_TABLE_NAME || 'Price Schedule';
+    // Use Table ID directly to avoid encoding issues
+    const tableId = 'tblYBta18ZZklF5rv';
 
     if (!apiKey || !baseId) {
       return NextResponse.json(
@@ -42,7 +43,7 @@ export async function POST(request: NextRequest) {
 
     // First, check if record exists (search by SKU + Store)
     const searchFormula = `AND({SKU}='${sku}', {Store}='${store}')`;
-    const searchUrl = `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}?filterByFormula=${encodeURIComponent(searchFormula)}&maxRecords=1`;
+    const searchUrl = `https://api.airtable.com/v0/${baseId}/${tableId}?filterByFormula=${encodeURIComponent(searchFormula)}&maxRecords=1`;
 
     const searchResponse = await fetch(searchUrl, {
       headers: { 'Authorization': `Bearer ${apiKey}` }
@@ -73,7 +74,7 @@ export async function POST(request: NextRequest) {
     if (existingRecord) {
       // Update existing record
       response = await fetch(
-        `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}/${existingRecord.id}`,
+        `https://api.airtable.com/v0/${baseId}/${tableId}/${existingRecord.id}`,
         {
           method: 'PATCH',
           headers: {
@@ -86,7 +87,7 @@ export async function POST(request: NextRequest) {
     } else {
       // Create new record
       response = await fetch(
-        `https://api.airtable.com/v0/${baseId}/${encodeURIComponent(tableName)}`,
+        `https://api.airtable.com/v0/${baseId}/${tableId}`,
         {
           method: 'POST',
           headers: {

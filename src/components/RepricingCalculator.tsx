@@ -235,20 +235,6 @@ const RepricingCalculator = () => {
             <h3 className="text-xs font-bold text-slate-500 uppercase mb-3">Settings</h3>
 
             <div className="space-y-3">
-              {/* Store Selection */}
-              <div>
-                <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Store</label>
-                <select
-                  value={store}
-                  onChange={(e) => setStore(e.target.value)}
-                  className="w-full text-sm p-2 border border-slate-300 rounded-lg"
-                >
-                  <option value="WM19">WM19</option>
-                  <option value="WM24">WM24</option>
-                  <option value="WM33">WM33</option>
-                </select>
-              </div>
-
               {/* Minimum Margin Selection */}
               <div>
                 <label className="text-xs font-bold text-slate-500 uppercase mb-1 block">Minimum Margin</label>
@@ -289,22 +275,39 @@ const RepricingCalculator = () => {
           </div>
         )}
 
-        <div className="p-4 space-y-3">
+        <div className="p-3 space-y-2.5">
 
-          {/* SKU Input */}
-          <div>
-            <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block">SKU</label>
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                <Tag size={16} />
+          {/* Store Selection + SKU Row */}
+          <div className="flex gap-2">
+            {/* Store Selection */}
+            <div className="w-24">
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block">Store</label>
+              <select
+                value={store}
+                onChange={(e) => setStore(e.target.value)}
+                className="w-full text-sm py-2 px-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 bg-emerald-50 font-bold text-emerald-700"
+              >
+                <option value="WM19">WM19</option>
+                <option value="WM24">WM24</option>
+                <option value="WM33">WM33</option>
+              </select>
+            </div>
+
+            {/* SKU Input */}
+            <div className="flex-1">
+              <label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block">SKU</label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+                  <Tag size={16} />
+                </div>
+                <input
+                  type="text"
+                  value={sku}
+                  onChange={(e) => setSku(e.target.value)}
+                  placeholder="Enter SKU"
+                  className="block w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 text-sm font-mono bg-slate-50 shadow-sm"
+                />
               </div>
-              <input
-                type="text"
-                value={sku}
-                onChange={(e) => setSku(e.target.value)}
-                placeholder="Enter SKU"
-                className="block w-full pl-9 pr-3 py-2 border border-slate-200 rounded-lg focus:ring-2 focus:ring-emerald-500 text-sm font-mono bg-slate-50 shadow-sm"
-              />
             </div>
           </div>
 
@@ -396,12 +399,12 @@ const RepricingCalculator = () => {
 
           {/* Margin Reference */}
           {hasValidInputs && (
-            <div className="bg-slate-100 p-3 rounded-xl border border-slate-200">
-              <div className="text-xs font-bold text-slate-500 uppercase mb-2 flex items-center gap-1">
-                <Calculator size={12} />
+            <div className="bg-slate-100 p-2 rounded-lg border border-slate-200">
+              <div className="text-[10px] font-bold text-slate-500 uppercase mb-1.5 flex items-center gap-1">
+                <Calculator size={10} />
                 Margin Reference
               </div>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-3 gap-1.5">
                 {[
                   { label: '10%', value: metrics.minPrice10, active: minimumMargin === 10 },
                   { label: '15%', value: metrics.minPrice15, active: minimumMargin === 15 },
@@ -409,16 +412,16 @@ const RepricingCalculator = () => {
                 ].map((item) => (
                   <div
                     key={item.label}
-                    className={`text-center p-2 rounded-lg border ${
+                    className={`text-center py-1 px-1.5 rounded border ${
                       item.active
-                        ? 'bg-emerald-50 border-emerald-300 ring-2 ring-emerald-200'
+                        ? 'bg-emerald-50 border-emerald-300 ring-1 ring-emerald-200'
                         : 'bg-white border-slate-200'
                     }`}
                   >
-                    <div className={`text-xs font-bold ${item.active ? 'text-emerald-700' : 'text-slate-400'}`}>
-                      {item.label} min
+                    <div className={`text-[10px] font-bold ${item.active ? 'text-emerald-700' : 'text-slate-400'}`}>
+                      {item.label}
                     </div>
-                    <div className={`text-sm font-bold ${item.active ? 'text-emerald-800' : 'text-slate-600'}`}>
+                    <div className={`text-xs font-bold ${item.active ? 'text-emerald-800' : 'text-slate-600'}`}>
                       {formatMoney(item.value)}
                     </div>
                   </div>
@@ -463,54 +466,54 @@ const RepricingCalculator = () => {
         </div>
 
         {/* Results Area */}
-        <div className="p-4">
+        <div className="p-3">
           {!hasValidInputs ? (
-            <div className="bg-slate-100 text-slate-500 p-3 rounded-xl text-center text-sm font-medium flex items-center justify-center gap-2 border border-slate-200 border-dashed">
-              <AlertCircle size={16} />
+            <div className="bg-slate-100 text-slate-500 p-2.5 rounded-lg text-center text-xs font-medium flex items-center justify-center gap-2 border border-slate-200 border-dashed">
+              <AlertCircle size={14} />
               <span>Enter competitor price & product cost</span>
             </div>
           ) : (
-            <div className="space-y-3">
+            <div className="space-y-2">
               {/* Proposed Price Card */}
-              <div className={`p-4 rounded-xl border-2 ${
+              <div className={`p-3 rounded-xl border-2 ${
                 isProposedBelowCompetitive
                   ? 'bg-amber-50 border-amber-300'
                   : 'bg-emerald-50 border-emerald-300'
               }`}>
-                <div className="flex items-center justify-between mb-2">
-                  <div className="text-xs font-bold text-slate-500 uppercase">Proposed Price</div>
-                  <div className={`text-xs px-2 py-0.5 rounded-full font-bold ${
+                <div className="flex items-center justify-between mb-1">
+                  <div className="text-[10px] font-bold text-slate-500 uppercase">Proposed Price</div>
+                  <div className={`text-[10px] px-1.5 py-0.5 rounded-full font-bold ${
                     isProposedBelowCompetitive
                       ? 'bg-amber-200 text-amber-800'
                       : 'bg-emerald-200 text-emerald-800'
                   }`}>
-                    {isProposedBelowCompetitive ? `${minimumMargin}% Minimum` : 'Competitive'}
+                    {isProposedBelowCompetitive ? `${minimumMargin}% Min` : 'Competitive'}
                   </div>
                 </div>
-                <div className={`text-3xl font-bold ${
+                <div className={`text-2xl font-bold ${
                   isProposedBelowCompetitive ? 'text-amber-700' : 'text-emerald-700'
                 }`}>
                   {formatMoney(metrics.proposedPrice)}
                 </div>
                 {isProposedBelowCompetitive && (
-                  <div className="mt-2 text-xs text-amber-700 flex items-center gap-1">
-                    <AlertTriangle size={12} />
-                    <span>Competitive price ({formatMoney(metrics.competitivePrice)}) below {minimumMargin}% margin</span>
+                  <div className="mt-1 text-[10px] text-amber-700 flex items-center gap-1">
+                    <AlertTriangle size={10} />
+                    <span>Competitive ({formatMoney(metrics.competitivePrice)}) below {minimumMargin}%</span>
                   </div>
                 )}
               </div>
 
               {/* Margin & Profit Summary */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="p-3 rounded-xl border bg-white border-slate-200 shadow-sm">
-                  <div className="text-xs text-slate-500 font-medium mb-1 uppercase">Net Profit</div>
-                  <div className={`text-xl font-bold ${metrics.netProfit < 0 ? 'text-red-600' : 'text-slate-800'}`}>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="p-2 rounded-lg border bg-white border-slate-200 shadow-sm">
+                  <div className="text-[10px] text-slate-500 font-medium uppercase">Net Profit</div>
+                  <div className={`text-lg font-bold ${metrics.netProfit < 0 ? 'text-red-600' : 'text-slate-800'}`}>
                     {formatMoney(metrics.netProfit)}
                   </div>
                 </div>
-                <div className="p-3 rounded-xl border bg-white border-slate-200 shadow-sm">
-                  <div className="text-xs text-slate-500 font-medium mb-1 uppercase">Margin</div>
-                  <div className={`text-xl font-bold ${
+                <div className="p-2 rounded-lg border bg-white border-slate-200 shadow-sm">
+                  <div className="text-[10px] text-slate-500 font-medium uppercase">Margin</div>
+                  <div className={`text-lg font-bold ${
                     metrics.marginPercent < 10 ? 'text-red-600' :
                     metrics.marginPercent < 15 ? 'text-amber-600' : 'text-emerald-600'
                   }`}>
@@ -524,31 +527,31 @@ const RepricingCalculator = () => {
                 <button
                   onClick={handleSaveToAirtable}
                   disabled={saveStatus === 'saving' || saveStatus === 'success' || !sku.trim()}
-                  className={`w-full py-3 rounded-xl font-bold text-white flex items-center justify-center gap-2 transition-all shadow-md hover:shadow-lg disabled:opacity-50 ${
+                  className={`w-full py-2.5 rounded-lg font-bold text-white text-sm flex items-center justify-center gap-2 transition-all shadow-md hover:shadow-lg disabled:opacity-50 ${
                     saveStatus === 'success' ? 'bg-green-600' :
                     saveStatus === 'error' ? 'bg-red-600' :
                     'bg-gradient-to-r from-emerald-600 to-emerald-700'
                   }`}
                 >
                   {saveStatus === 'saving' ? (
-                    <><Loader className="animate-spin" size={18} /><span>Saving...</span></>
+                    <><Loader className="animate-spin" size={16} /><span>Saving...</span></>
                   ) : saveStatus === 'success' ? (
-                    <><CheckCircle size={18} /><span>Saved!</span></>
+                    <><CheckCircle size={16} /><span>Saved!</span></>
                   ) : (
-                    <><Save size={18} /><span>Push to Price Schedule</span></>
+                    <><Save size={16} /><span>Push to Price Schedule</span></>
                   )}
                 </button>
               )}
 
               {metrics.netProfit < 0 && (
-                <div className="bg-red-100 text-red-800 p-2.5 rounded-lg text-center text-sm font-bold flex items-center justify-center gap-2 border border-red-200">
-                  <XCircle size={16} /> <span>LOSS - Cannot reprice</span>
+                <div className="bg-red-100 text-red-800 p-2 rounded-lg text-center text-xs font-bold flex items-center justify-center gap-2 border border-red-200">
+                  <XCircle size={14} /> <span>LOSS - Cannot reprice</span>
                 </div>
               )}
 
               {/* Store indicator */}
               {metrics.netProfit >= 0 && (
-                <div className="text-xs text-slate-400 text-center">
+                <div className="text-[10px] text-slate-400 text-center">
                   Saving to <span className="font-bold text-emerald-600">{store}</span> Price Schedule
                 </div>
               )}
