@@ -159,16 +159,15 @@ export async function POST(request: NextRequest) {
       fields: {
         'WM Product ID': product.id,
         'Title': product.title,
-        'WM Supplier Cost': product.productCost,
+        'Product Cost': product.productCost,
         'Approved Base Price': product.calculatedSellingPrice,
         'Store': store,
         'SKU': generateDiscoverySKU(store, (timestamp % 10000) + index),
-        'Primary Supplier Link': product.url || `https://www.walmart.com/ip/${product.id}`,
+        'Primary Supplier Link': `https://www.walmart.com/ip/${product.id}`,
         'Discovery Source': discoverySource,
         'Discovery Date': new Date().toISOString(),
         'Discovery Tags': discoveryTags,
-        'Status': 'Discovery',
-        'Lister': 'Auto-Discovery'
+        'Lister': 'Auto'
       }
     }));
 
