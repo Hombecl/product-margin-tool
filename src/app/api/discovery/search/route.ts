@@ -34,6 +34,48 @@ interface SearchResult {
   products: WalmartProduct[];
   totalResults: number;
   creditsUsed: number;
+  currentPage: number;
+  totalPages: number;
+  hasMore: boolean;
+}
+
+const AIRTABLE_PRODUCT_TABLE_ID = 'tblo1uuy8Nc9CSjX4';
+
+// Check existing products in Airtable
+async function checkExistingProducts(productIds: string[]): Promise<Set<string>> {
+  if (!AIRTABLE_TOKEN || productIds.length === 0) return new Set();
+
+  const existingIds = new Set<string>();
+
+  // Build formula to check multiple IDs
+  const idChecks = productIds.map(id => `{WM Product ID} = '${id}'`).join(', ');
+  const formula = `OR(${idChecks})`;
+
+  try {
+    const url = new URL(`https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${AIRTABLE_PRODUCT_TABLE_ID}`);
+    url.searchParams.set('filterByFormula', formula);
+    url.searchParams.set('fields[]', 'WM Product ID');
+
+    const response = await fetch(url.toString(), {
+      headers: {
+        'Authorization': `Bearer ${AIRTABLE_TOKEN}`
+      }
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+      for (const record of data.records || []) {
+        const wmProductId = record.fields['WM Product ID'];
+        if (wmProductId) {
+          existingIds.add(wmProductId);
+        }
+      }
+    }
+  } catch (error) {
+    console.error('Error checking existing products:', error);
+  }
+
+  return existingIds;
 }
 
 async function logScrape(data: {
@@ -98,7 +140,9 @@ export async function POST(request: NextRequest) {
       operator = 'Unknown',
       sessionId = '',
       sortBy = 'best_seller',  // 'best_match', 'best_seller', 'price_low', 'price_high'
-      deliveryZip = DEFAULT_DELIVERY_ZIP
+      deliveryZip = DEFAULT_DELIVERY_ZIP,
+      page = 1,  // Page number for pagination (1-indexed)
+      checkDuplicates = true  // Whether to check Airtable for existing products
     } = body;
 
     if (!query) {
@@ -112,6 +156,11 @@ export async function POST(request: NextRequest) {
     searchUrl.searchParams.set('query', query);
     searchUrl.searchParams.set('delivery_zip', deliveryZip);
     searchUrl.searchParams.set('sort_by', sortBy);
+
+    // Add page parameter for pagination
+    if (page > 1) {
+      searchUrl.searchParams.set('page', String(page));
+    }
 
     const response = await fetch(searchUrl.toString());
 
@@ -138,6 +187,13 @@ export async function POST(request: NextRequest) {
       return isWalmart && inStock && withinPrice && meetsRating;
     });
 
+    // Check for existing products in Airtable (deduplication)
+    let existingProductIds = new Set<string>();
+    if (checkDuplicates && filteredProducts.length > 0) {
+      const productIds = filteredProducts.map(p => p.id);
+      existingProductIds = await checkExistingProducts(productIds);
+    }
+
     // Calculate selling price for each product
     // Formula: Selling Price = (Cost + $4.50) / (1 - 10.5% - 15%) = (Cost + $4.50) / 0.745
     const productsWithPricing = filteredProducts.map((product: WalmartProduct) => {
@@ -152,14 +208,21 @@ export async function POST(request: NextRequest) {
         productCost: cost,
         calculatedSellingPrice: Math.ceil(sellingPrice * 100) / 100, // Round up to nearest cent
         calculatedMargin: Math.round(margin * 100) / 100,
-        calculatedMarginPercent: Math.round(marginPercent * 10) / 10
+        calculatedMarginPercent: Math.round(marginPercent * 10) / 10,
+        isExisting: existingProductIds.has(product.id)  // Mark if already in Airtable
       };
     });
+
+    // Estimate pagination info
+    // ScrapingBee typically returns ~40 products per page
+    const productsPerPage = 40;
+    const estimatedTotalPages = Math.ceil(data.total_results / productsPerPage) || 1;
+    const hasMore = page < estimatedTotalPages && allProducts.length >= productsPerPage;
 
     // Log the scrape
     await logScrape({
       action: 'Search',
-      query,
+      query: `${query} (page ${page})`,
       resultsCount: productsWithPricing.length,
       creditsUsed: CREDITS_PER_SEARCH,
       operator,
@@ -170,8 +233,11 @@ export async function POST(request: NextRequest) {
 
     const result: SearchResult = {
       products: productsWithPricing,
-      totalResults: allProducts.length,
-      creditsUsed: CREDITS_PER_SEARCH
+      totalResults: data.total_results || allProducts.length,
+      creditsUsed: CREDITS_PER_SEARCH,
+      currentPage: page,
+      totalPages: estimatedTotalPages,
+      hasMore
     };
 
     return NextResponse.json(result);

@@ -45,6 +45,7 @@ interface Product {
     shipping: boolean;
     free_shipping: boolean;
   };
+  isExisting?: boolean; // Already in Airtable
 }
 
 interface Category {
@@ -97,6 +98,12 @@ export default function ProductDiscovery() {
   const [totalResults, setTotalResults] = useState(0);
   const [lastSearchSource, setLastSearchSource] = useState('');
 
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [hasMore, setHasMore] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
+
   // UI state
   const [loading, setLoading] = useState(false);
   const [adding, setAdding] = useState(false);
@@ -141,7 +148,7 @@ export default function ProductDiscovery() {
   }, [fetchStats]);
 
   // Keyword search handler
-  const handleKeywordSearch = async () => {
+  const handleKeywordSearch = async (pageNum = 1, append = false) => {
     if (!query.trim()) {
       setError('Please enter a search query');
       return;
@@ -152,11 +159,15 @@ export default function ProductDiscovery() {
       return;
     }
 
-    setLoading(true);
+    if (append) {
+      setLoadingMore(true);
+    } else {
+      setLoading(true);
+      setProducts([]);
+      setSelectedProducts(new Set());
+    }
     setError('');
     setSuccess('');
-    setProducts([]);
-    setSelectedProducts(new Set());
 
     try {
       const res = await fetch('/api/discovery/search', {
@@ -169,7 +180,9 @@ export default function ProductDiscovery() {
           store,
           operator: operator.trim(),
           sessionId,
-          sortBy
+          sortBy,
+          page: pageNum,
+          checkDuplicates: true
         })
       });
 
@@ -179,11 +192,22 @@ export default function ProductDiscovery() {
         throw new Error(data.error || 'Search failed');
       }
 
-      setProducts(data.products || []);
+      if (append) {
+        // Deduplicate when appending - only add products not already in list
+        const existingIds = new Set(products.map(p => p.id));
+        const newProducts = (data.products || []).filter((p: Product) => !existingIds.has(p.id));
+        setProducts(prev => [...prev, ...newProducts]);
+      } else {
+        setProducts(data.products || []);
+      }
+
       setTotalResults(data.totalResults || 0);
+      setCurrentPage(data.currentPage || 1);
+      setTotalPages(data.totalPages || 1);
+      setHasMore(data.hasMore || false);
       setLastSearchSource(`Keyword: ${query}`);
 
-      if (data.products?.length === 0) {
+      if (!append && data.products?.length === 0) {
         setError('No products found matching your criteria');
       }
 
@@ -192,6 +216,14 @@ export default function ProductDiscovery() {
       setError(err instanceof Error ? err.message : 'Search failed');
     } finally {
       setLoading(false);
+      setLoadingMore(false);
+    }
+  };
+
+  // Load more results
+  const handleLoadMore = () => {
+    if (hasMore && !loadingMore) {
+      handleKeywordSearch(currentPage + 1, true);
     }
   };
 
@@ -275,8 +307,13 @@ export default function ProductDiscovery() {
 
   // Main search handler
   const handleSearch = () => {
+    // Reset pagination when starting new search
+    setCurrentPage(1);
+    setTotalPages(1);
+    setHasMore(false);
+
     if (searchMode === 'keyword') {
-      handleKeywordSearch();
+      handleKeywordSearch(1, false);
     } else {
       handleCategoryBrowse();
     }
@@ -646,14 +683,20 @@ export default function ProductDiscovery() {
         {products.length > 0 && (
           <>
             {/* Results Header */}
-            <div className="flex items-center justify-between mb-4">
-              <div className="flex items-center gap-4">
+            <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+              <div className="flex items-center gap-4 flex-wrap">
                 <h2 className="font-bold text-slate-800">
                   Results ({products.length} of {totalResults} products)
                 </h2>
                 <span className="text-sm text-slate-500 bg-slate-100 px-2 py-1 rounded">
                   {lastSearchSource}
                 </span>
+                {/* Show existing products count */}
+                {products.filter(p => p.isExisting).length > 0 && (
+                  <span className="text-sm text-amber-600 bg-amber-50 px-2 py-1 rounded border border-amber-200">
+                    {products.filter(p => p.isExisting).length} already in Airtable
+                  </span>
+                )}
                 <button
                   onClick={selectAll}
                   className="text-sm text-blue-600 hover:text-blue-700"
@@ -671,122 +714,162 @@ export default function ProductDiscovery() {
               </button>
             </div>
 
-            {/* Products Grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {/* Products Grid - More compact: 4-6 columns */}
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
               {products.map((product) => (
                 <div
                   key={product.id}
                   onClick={() => toggleProduct(product.id)}
-                  className={`bg-white rounded-xl border-2 p-4 cursor-pointer transition-all hover:shadow-lg ${
+                  className={`bg-white rounded-lg border-2 p-2.5 cursor-pointer transition-all hover:shadow-md ${
                     selectedProducts.has(product.id)
                       ? 'border-blue-500 ring-2 ring-blue-200'
+                      : product.isExisting
+                      ? 'border-amber-300 bg-amber-50'
                       : 'border-slate-200 hover:border-slate-300'
                   }`}
                 >
-                  {/* Selection Indicator */}
-                  <div className="flex items-start justify-between mb-3">
-                    <div
-                      className={`w-6 h-6 rounded-full border-2 flex items-center justify-center ${
-                        selectedProducts.has(product.id)
-                          ? 'bg-blue-500 border-blue-500'
-                          : 'border-slate-300'
-                      }`}
-                    >
-                      {selectedProducts.has(product.id) && <Check size={14} className="text-white" />}
+                  {/* Header: Checkbox + Walmart Badge + Link */}
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-1.5">
+                      <div
+                        className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 ${
+                          selectedProducts.has(product.id)
+                            ? 'bg-blue-500 border-blue-500'
+                            : product.isExisting
+                            ? 'border-amber-400 bg-amber-100'
+                            : 'border-slate-300'
+                        }`}
+                      >
+                        {selectedProducts.has(product.id) && <Check size={12} className="text-white" />}
+                        {product.isExisting && !selectedProducts.has(product.id) && (
+                          <span className="text-amber-600 text-xs font-bold">!</span>
+                        )}
+                      </div>
+                      {/* Walmart.com Badge */}
+                      {product.seller_name?.toLowerCase().includes('walmart') && (
+                        <span className="px-1.5 py-0.5 bg-blue-600 text-white text-[10px] font-bold rounded">
+                          WM
+                        </span>
+                      )}
                     </div>
                     <a
-                      href={product.url || `https://www.walmart.com/ip/${product.id}`}
+                      href={`https://www.walmart.com/ip/${product.id}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       onClick={(e) => e.stopPropagation()}
-                      className="p-1 text-slate-400 hover:text-blue-600"
+                      className="p-0.5 text-slate-400 hover:text-blue-600"
                     >
-                      <ExternalLink size={16} />
+                      <ExternalLink size={14} />
                     </a>
                   </div>
 
-                  {/* Product Image */}
+                  {/* Product Image - Smaller */}
                   {product.image && (
-                    <div className="mb-3 flex justify-center">
+                    <div className="mb-2 flex justify-center">
                       <img
                         src={product.image}
                         alt={product.title}
-                        className="h-24 object-contain"
+                        className="h-16 object-contain"
                       />
                     </div>
                   )}
 
-                  {/* Product Title */}
-                  <h3 className="font-medium text-slate-800 text-sm line-clamp-2 mb-3">
+                  {/* Existing Product Warning */}
+                  {product.isExisting && (
+                    <div className="mb-1.5 px-1.5 py-0.5 bg-amber-100 border border-amber-300 rounded text-[10px] text-amber-700 text-center">
+                      Already in Airtable
+                    </div>
+                  )}
+
+                  {/* Product Title - More compact */}
+                  <h3 className="font-medium text-slate-800 text-xs line-clamp-2 mb-1.5 leading-tight">
                     {product.title}
                   </h3>
 
-                  {/* Rating */}
+                  {/* Rating - Inline compact */}
                   {product.rating && (
-                    <div className="flex items-center gap-1 text-sm text-slate-500 mb-2">
-                      <Star size={14} className="text-yellow-500 fill-yellow-500" />
+                    <div className="flex items-center gap-1 text-xs text-slate-500 mb-1.5">
+                      <Star size={10} className="text-yellow-500 fill-yellow-500" />
                       <span>{product.rating}</span>
-                      {product.rating_count && (
-                        <span className="text-slate-400">({product.rating_count.toLocaleString()})</span>
-                      )}
+                      <span className="text-slate-400">({product.rating_count?.toLocaleString()})</span>
                     </div>
                   )}
 
-                  {/* Fulfillment Badges */}
-                  {product.fulfillment && (
-                    <div className="flex flex-wrap gap-1.5 mb-3">
-                      {product.fulfillment.shipping && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-50 text-blue-700 text-xs font-medium rounded-full">
-                          <PackageCheck size={12} />
-                          Ship
-                        </span>
-                      )}
-                      {product.fulfillment.delivery && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-50 text-emerald-700 text-xs font-medium rounded-full">
-                          <Truck size={12} />
-                          Delivery
-                        </span>
-                      )}
-                      {product.fulfillment.pickup && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-purple-50 text-purple-700 text-xs font-medium rounded-full">
-                          <Store size={12} />
-                          Pickup
-                        </span>
-                      )}
-                      {product.fulfillment.free_shipping && (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-orange-50 text-orange-700 text-xs font-medium rounded-full">
-                          Free Ship
-                        </span>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Pricing */}
-                  <div className="bg-slate-50 rounded-lg p-3 space-y-2">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-slate-500 flex items-center gap-1">
-                        <Package size={14} />
-                        Cost
+                  {/* Fulfillment Status - Compact with ZIP */}
+                  <div className="flex flex-wrap gap-1 mb-2">
+                    {product.fulfillment?.shipping ? (
+                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-emerald-50 text-emerald-700 text-[10px] font-medium rounded">
+                        <PackageCheck size={10} />
+                        77057
                       </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-red-50 text-red-600 text-[10px] font-medium rounded">
+                        No Ship
+                      </span>
+                    )}
+                    {product.fulfillment?.delivery && (
+                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-blue-50 text-blue-700 text-[10px] font-medium rounded">
+                        <Truck size={10} />
+                      </span>
+                    )}
+                    {product.fulfillment?.pickup && (
+                      <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 bg-purple-50 text-purple-700 text-[10px] font-medium rounded">
+                        <Store size={10} />
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Pricing - Compact */}
+                  <div className="bg-slate-100 rounded p-1.5 space-y-0.5 text-xs">
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Cost</span>
                       <span className="font-medium text-slate-700">{formatMoney(product.productCost)}</span>
                     </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-slate-500 flex items-center gap-1">
-                        <DollarSign size={14} />
-                        Sell Price
-                      </span>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Sell</span>
                       <span className="font-bold text-emerald-600">{formatMoney(product.calculatedSellingPrice)}</span>
                     </div>
-                    <div className="flex items-center justify-between text-sm pt-2 border-t border-slate-200">
+                    <div className="flex justify-between pt-0.5 border-t border-slate-200">
                       <span className="text-slate-500">Margin</span>
-                      <span className="font-bold text-blue-600">
-                        {formatMoney(product.calculatedMargin)} ({product.calculatedMarginPercent}%)
-                      </span>
+                      <span className="font-bold text-blue-600">{product.calculatedMarginPercent}%</span>
                     </div>
                   </div>
                 </div>
               ))}
             </div>
+
+            {/* Load More Button */}
+            {hasMore && searchMode === 'keyword' && (
+              <div className="mt-6 text-center">
+                <button
+                  onClick={handleLoadMore}
+                  disabled={loadingMore}
+                  className="inline-flex items-center gap-2 px-6 py-3 bg-slate-100 text-slate-700 rounded-lg hover:bg-slate-200 transition-colors disabled:opacity-50 font-medium"
+                >
+                  {loadingMore ? (
+                    <>
+                      <Loader size={18} className="animate-spin" />
+                      Loading more...
+                    </>
+                  ) : (
+                    <>
+                      <Plus size={18} />
+                      Load More Results (Page {currentPage + 1} of ~{totalPages})
+                    </>
+                  )}
+                </button>
+                <p className="text-xs text-slate-500 mt-2">
+                  Each page costs 10 ScrapingBee credits
+                </p>
+              </div>
+            )}
+
+            {/* End of Results */}
+            {!hasMore && products.length > 40 && (
+              <div className="mt-6 text-center text-sm text-slate-500">
+                End of results ({products.length} products loaded)
+              </div>
+            )}
           </>
         )}
 
