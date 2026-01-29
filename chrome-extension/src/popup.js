@@ -88,7 +88,7 @@ function renderProductData(data) {
 
   // Check for self-competition
   const selfCompetitionSellers = sellers.filter(s =>
-    OUR_STORE_NAMES.some(name => s.sellerName.toLowerCase().includes(name.toLowerCase()))
+    s.sellerName && OUR_STORE_NAMES.some(name => s.sellerName.toLowerCase().includes(name.toLowerCase()))
   );
 
   // Find cheapest seller
@@ -320,7 +320,7 @@ Total Sellers: ${productData.transactableOfferCount || sellers.length}
 3P Sellers: ${productData.additionalOfferCount || 0}
 
 Sellers:
-${sellers.map((s, i) => `${i + 1}. ${s.sellerName}: $${s.price.toFixed(2)} + $${(s.shippingPrice || 0).toFixed(2)} ship = $${s.totalPrice.toFixed(2)}`).join('\n')}
+${sellers.map((s, i) => `${i + 1}. ${s.sellerName || 'Unknown'}: $${(s.price != null ? s.price.toFixed(2) : '-.--')} + $${(s.shippingPrice || 0).toFixed(2)} ship = $${(s.totalPrice != null ? s.totalPrice.toFixed(2) : '-.--')}`).join('\n')}
 
 Validation Flags:
 - No Competition: ${validationFlags.noCompetition ? 'Yes' : 'No'}

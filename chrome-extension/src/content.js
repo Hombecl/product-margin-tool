@@ -128,7 +128,7 @@
       // Calculate total prices if not set
       result.sellers = result.sellers.map(s => ({
         ...s,
-        totalPrice: s.totalPrice || (s.price + (s.shippingPrice || 0))
+        totalPrice: s.totalPrice != null ? s.totalPrice : (s.price != null ? s.price + (s.shippingPrice || 0) : null)
       }));
 
       // Sort sellers by total price
