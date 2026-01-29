@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Walmart Seller Scraper</title>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      width: 380px;
+      min-height: 200px;
+      background: #f8fafc;
+      color: #334155;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #0071dc 0%, #004c91 100%);
+      color: white;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .header h1 {
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .header .icon {
+      width: 24px;
+      height: 24px;
+      background: rgba(255,255,255,0.2);
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .content {
+      padding: 12px;
+    }
+
+    .error-state, .loading-state, .not-walmart {
+      text-align: center;
+      padding: 30px 20px;
+      color: #64748b;
+    }
+
+    .error-state .icon, .not-walmart .icon {
+      font-size: 32px;
+      margin-bottom: 10px;
+    }
+
+    .loading-state .spinner {
+      width: 30px;
+      height: 30px;
+      border: 3px solid #e2e8f0;
+      border-top-color: #0071dc;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 10px;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Product Info */
+    .product-info {
+      background: white;
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 12px;
+      border: 1px solid #e2e8f0;
+    }
+
+    .product-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: #1e293b;
+      line-height: 1.3;
+      margin-bottom: 8px;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+
+    .product-meta {
+      display: flex;
+      gap: 12px;
+      font-size: 11px;
+      color: #64748b;
+    }
+
+    .product-meta span {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    /* Stats Row */
+    .stats-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .stat-box {
+      background: white;
+      border-radius: 8px;
+      padding: 10px;
+      text-align: center;
+      border: 1px solid #e2e8f0;
+    }
+
+    .stat-box.warning {
+      background: #fef3c7;
+      border-color: #fcd34d;
+    }
+
+    .stat-box.danger {
+      background: #fee2e2;
+      border-color: #fca5a5;
+    }
+
+    .stat-box.success {
+      background: #dcfce7;
+      border-color: #86efac;
+    }
+
+    .stat-value {
+      font-size: 18px;
+      font-weight: 700;
+      color: #1e293b;
+    }
+
+    .stat-label {
+      font-size: 10px;
+      color: #64748b;
+      text-transform: uppercase;
+      margin-top: 2px;
+    }
+
+    /* Sellers List */
+    .sellers-section {
+      background: white;
+      border-radius: 8px;
+      border: 1px solid #e2e8f0;
+      overflow: hidden;
+    }
+
+    .sellers-header {
+      background: #f1f5f9;
+      padding: 10px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #475569;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .seller-row {
+      display: flex;
+      align-items: center;
+      padding: 10px 12px;
+      border-bottom: 1px solid #f1f5f9;
+      gap: 10px;
+    }
+
+    .seller-row:last-child {
+      border-bottom: none;
+    }
+
+    .seller-row.buy-box {
+      background: #eff6ff;
+    }
+
+    .seller-row.cheapest {
+      background: #f0fdf4;
+    }
+
+    .seller-rank {
+      width: 20px;
+      height: 20px;
+      background: #e2e8f0;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: 600;
+      color: #64748b;
+    }
+
+    .seller-row.buy-box .seller-rank {
+      background: #0071dc;
+      color: white;
+    }
+
+    .seller-row.cheapest .seller-rank {
+      background: #22c55e;
+      color: white;
+    }
+
+    .seller-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .seller-name {
+      font-size: 12px;
+      font-weight: 500;
+      color: #1e293b;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .seller-tags {
+      display: flex;
+      gap: 4px;
+      margin-top: 2px;
+    }
+
+    .seller-tag {
+      font-size: 9px;
+      padding: 1px 5px;
+      border-radius: 3px;
+      font-weight: 500;
+    }
+
+    .seller-tag.walmart {
+      background: #dbeafe;
+      color: #1d4ed8;
+    }
+
+    .seller-tag.third-party {
+      background: #fef3c7;
+      color: #b45309;
+    }
+
+    .seller-tag.buy-box {
+      background: #0071dc;
+      color: white;
+    }
+
+    .seller-prices {
+      text-align: right;
+    }
+
+    .seller-total {
+      font-size: 14px;
+      font-weight: 700;
+      color: #1e293b;
+    }
+
+    .seller-breakdown {
+      font-size: 10px;
+      color: #64748b;
+    }
+
+    /* Actions */
+    .actions {
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 10px 16px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #0071dc 0%, #004c91 100%);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      opacity: 0.9;
+    }
+
+    .btn-secondary {
+      background: white;
+      color: #475569;
+      border: 1px solid #e2e8f0;
+    }
+
+    .btn-secondary:hover {
+      background: #f8fafc;
+    }
+
+    .btn-danger {
+      background: #fee2e2;
+      color: #dc2626;
+      border: 1px solid #fca5a5;
+    }
+
+    /* Validation Flags */
+    .validation-flags {
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .flag-btn {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      background: white;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .flag-btn:hover {
+      background: #f8fafc;
+    }
+
+    .flag-btn.active {
+      border-color: #0071dc;
+      background: #eff6ff;
+    }
+
+    .flag-btn.no-competition.active {
+      border-color: #f59e0b;
+      background: #fef3c7;
+    }
+
+    .flag-btn.too-much-competition.active {
+      border-color: #dc2626;
+      background: #fee2e2;
+    }
+
+    .flag-btn.self-competition.active {
+      border-color: #8b5cf6;
+      background: #ede9fe;
+    }
+
+    .flag-icon {
+      font-size: 16px;
+    }
+
+    .flag-text {
+      flex: 1;
+      text-align: left;
+    }
+
+    .flag-text strong {
+      display: block;
+      color: #1e293b;
+    }
+
+    .flag-text span {
+      font-size: 10px;
+      color: #64748b;
+    }
+
+    /* Min Price Input */
+    .min-price-section {
+      padding: 0 12px 12px;
+    }
+
+    .min-price-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .min-price-input {
+      flex: 1;
+      padding: 8px 12px;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .min-price-label {
+      font-size: 11px;
+      color: #64748b;
+      margin-bottom: 4px;
+    }
+
+    /* Footer */
+    .footer {
+      padding: 8px 12px;
+      background: #f8fafc;
+      border-top: 1px solid #e2e8f0;
+      font-size: 10px;
+      color: #94a3b8;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="icon">$</div>
+    <h1>Walmart Seller Scraper</h1>
+  </div>
+
+  <div id="content" class="content">
+    <div class="loading-state">
+      <div class="spinner"></div>
+      <div>Extracting seller data...</div>
+    </div>
+  </div>
+
+  <script src="src/popup.js"></script>
+</body>
+</html>

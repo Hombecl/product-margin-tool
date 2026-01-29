@@ -5,7 +5,7 @@ import {
   Calculator, AlertCircle, TrendingDown, DollarSign,
   CheckCircle, XCircle, AlertTriangle, ArrowRight, Settings,
   Save, Loader, RotateCcw, Tag, ChevronDown, ChevronUp,
-  Target, TrendingUp
+  Target, TrendingUp, Users, Store, Zap
 } from 'lucide-react';
 
 interface Metrics {
@@ -22,6 +22,21 @@ interface Metrics {
   minPrice19: number;
 }
 
+interface ValidationFlags {
+  noCompetition: boolean;
+  selfCompetition: boolean;
+  tooMuchCompetition: boolean;
+}
+
+interface ExtensionData {
+  wmProductId: string;
+  title: string;
+  totalSellers: number;
+  thirdPartySellers: number;
+  brand: string;
+  rating: string;
+}
+
 const RepricingCalculator = () => {
   // --- STATE: Settings ---
   const [showSettings, setShowSettings] = useState(false);
@@ -35,6 +50,15 @@ const RepricingCalculator = () => {
   const [compShipping, setCompShipping] = useState('');
   const [undercut, setUndercut] = useState('2.5');
   const [productCost, setProductCost] = useState('');
+
+  // --- STATE: Validation Flags (from Chrome Extension) ---
+  const [validationFlags, setValidationFlags] = useState<ValidationFlags>({
+    noCompetition: false,
+    selfCompetition: false,
+    tooMuchCompetition: false
+  });
+  const [extensionData, setExtensionData] = useState<ExtensionData | null>(null);
+  const [fromExtension, setFromExtension] = useState(false);
 
   // --- STATE: Save ---
   const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'success' | 'error'>('idle');
@@ -65,6 +89,44 @@ const RepricingCalculator = () => {
       .then(res => res.json())
       .then(data => setHasEnvConfig(data.configured))
       .catch(() => setHasEnvConfig(false));
+  }, []);
+
+  // --- EFFECT: Parse URL params from Chrome Extension ---
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const params = new URLSearchParams(window.location.search);
+    const source = params.get('source');
+
+    if (source === 'chrome-extension') {
+      setFromExtension(true);
+
+      // Pre-fill competitor pricing
+      const compPriceParam = params.get('compPrice');
+      const compShippingParam = params.get('compShipping');
+      if (compPriceParam) setCompPrice(compPriceParam);
+      if (compShippingParam) setCompShipping(compShippingParam);
+
+      // Set validation flags
+      setValidationFlags({
+        noCompetition: params.get('noCompetition') === '1',
+        selfCompetition: params.get('selfCompetition') === '1',
+        tooMuchCompetition: params.get('tooMuchCompetition') === '1'
+      });
+
+      // Store extension data for display
+      setExtensionData({
+        wmProductId: params.get('wmProductId') || '',
+        title: params.get('title') || '',
+        totalSellers: parseInt(params.get('totalSellers') || '0', 10),
+        thirdPartySellers: parseInt(params.get('thirdPartySellers') || '0', 10),
+        brand: params.get('brand') || '',
+        rating: params.get('rating') || ''
+      });
+
+      // Clear URL params after reading (clean URL)
+      window.history.replaceState({}, '', window.location.pathname);
+    }
   }, []);
 
   // --- EFFECT: Calculation Logic ---
@@ -145,6 +207,22 @@ const RepricingCalculator = () => {
     setCompShipping('');
     setProductCost('');
     setSaveStatus('idle');
+    setValidationFlags({ noCompetition: false, selfCompetition: false, tooMuchCompetition: false });
+    setExtensionData(null);
+    setFromExtension(false);
+  };
+
+  // --- FUNCTION: Toggle Validation Flag ---
+  const toggleValidationFlag = (flag: keyof ValidationFlags) => {
+    setValidationFlags(prev => ({ ...prev, [flag]: !prev[flag] }));
+  };
+
+  // --- FUNCTION: Get Validation Status ---
+  const getValidationStatus = (): string => {
+    if (validationFlags.noCompetition) return 'No Competition';
+    if (validationFlags.selfCompetition) return 'Self Competition';
+    if (validationFlags.tooMuchCompetition) return 'Too Much Competition';
+    return 'Validated';
   };
 
   // --- FUNCTION: Save to Airtable (Price Schedule) ---
@@ -174,7 +252,12 @@ const RepricingCalculator = () => {
           undercut: parseFloat(undercut) || 0,
           productCost: parseFloat(productCost) || 0,
           marginPercent: parseFloat(metrics.marginPercent.toFixed(1)),
-          priceSource: metrics.priceSource
+          priceSource: metrics.priceSource,
+          // Validation data from Chrome Extension
+          validationStatus: getValidationStatus(),
+          validationFlags,
+          wmProductId: extensionData?.wmProductId || '',
+          fromExtension
         })
       });
 
@@ -276,6 +359,73 @@ const RepricingCalculator = () => {
         )}
 
         <div className="p-3 space-y-2.5">
+
+          {/* Extension Data Banner */}
+          {fromExtension && extensionData && (
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-2">
+              <div className="flex items-center gap-2 mb-1">
+                <Zap size={14} className="text-blue-600" />
+                <span className="text-xs font-bold text-blue-700">From Chrome Extension</span>
+              </div>
+              <div className="text-xs text-blue-600 truncate" title={extensionData.title}>
+                {extensionData.title || `Product ID: ${extensionData.wmProductId}`}
+              </div>
+              <div className="flex gap-3 mt-1 text-[10px] text-blue-500">
+                <span><Users size={10} className="inline mr-0.5" />{extensionData.totalSellers} sellers</span>
+                <span><Store size={10} className="inline mr-0.5" />{extensionData.thirdPartySellers} 3P</span>
+                {extensionData.rating && <span>⭐ {extensionData.rating}</span>}
+              </div>
+            </div>
+          )}
+
+          {/* Validation Flags */}
+          <div className="bg-slate-50 border border-slate-200 rounded-lg p-2">
+            <div className="text-[10px] font-bold text-slate-500 uppercase mb-2">Validation Status</div>
+            <div className="grid grid-cols-3 gap-1.5">
+              <button
+                onClick={() => toggleValidationFlag('noCompetition')}
+                className={`p-1.5 rounded-md border text-center transition-all ${
+                  validationFlags.noCompetition
+                    ? 'bg-amber-100 border-amber-400 text-amber-800'
+                    : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'
+                }`}
+              >
+                <div className="text-base mb-0.5">🔴</div>
+                <div className="text-[9px] font-bold leading-tight">No Competition</div>
+              </button>
+              <button
+                onClick={() => toggleValidationFlag('selfCompetition')}
+                className={`p-1.5 rounded-md border text-center transition-all ${
+                  validationFlags.selfCompetition
+                    ? 'bg-purple-100 border-purple-400 text-purple-800'
+                    : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'
+                }`}
+              >
+                <div className="text-base mb-0.5">🟣</div>
+                <div className="text-[9px] font-bold leading-tight">Self Competition</div>
+              </button>
+              <button
+                onClick={() => toggleValidationFlag('tooMuchCompetition')}
+                className={`p-1.5 rounded-md border text-center transition-all ${
+                  validationFlags.tooMuchCompetition
+                    ? 'bg-red-100 border-red-400 text-red-800'
+                    : 'bg-white border-slate-200 text-slate-400 hover:border-slate-300'
+                }`}
+              >
+                <div className="text-base mb-0.5">🔴</div>
+                <div className="text-[9px] font-bold leading-tight">Too Much Comp</div>
+              </button>
+            </div>
+            <div className="mt-2 text-center">
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                validationFlags.noCompetition || validationFlags.selfCompetition || validationFlags.tooMuchCompetition
+                  ? 'bg-amber-100 text-amber-700'
+                  : 'bg-green-100 text-green-700'
+              }`}>
+                Status: {getValidationStatus()}
+              </span>
+            </div>
+          </div>
 
           {/* Store Selection + SKU Row */}
           <div className="flex gap-2">

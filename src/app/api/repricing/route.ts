@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { sku, store, targetPrice, productCost, competitorPrice, undercut, marginPercent, priceSource } = body;
+    const { sku, store, targetPrice, productCost, competitorPrice, undercut, marginPercent, priceSource, validationStatus, validationFlags, wmProductId, fromExtension } = body;
 
     // Get Airtable config from environment
     const apiKey = process.env.AIRTABLE_API_KEY;
@@ -108,6 +108,60 @@ export async function POST(request: NextRequest) {
     }
 
     const data = await response.json();
+
+    // If we have validation data and wmProductId, also update the Product table
+    if (fromExtension && wmProductId && validationStatus) {
+      const productTableId = 'tblo1uuy8Nc9CSjX4'; // Product table
+      const productBaseId = 'appRCQASsApV4C33N'; // Product base
+
+      // Search for product by WM Product ID
+      const productSearchFormula = `{WM Product ID}='${wmProductId}'`;
+      const productSearchUrl = `https://api.airtable.com/v0/${productBaseId}/${productTableId}?filterByFormula=${encodeURIComponent(productSearchFormula)}&maxRecords=1`;
+
+      try {
+        const productSearchResponse = await fetch(productSearchUrl, {
+          headers: { 'Authorization': `Bearer ${apiKey}` }
+        });
+
+        if (productSearchResponse.ok) {
+          const productSearchData = await productSearchResponse.json();
+          const productRecord = productSearchData.records?.[0];
+
+          if (productRecord) {
+            // Update validation status on product
+            const productFields: Record<string, unknown> = {
+              'Validation Status': validationStatus,
+              'Validation Date': new Date().toISOString()
+            };
+
+            // Add validation notes if there are flags
+            const notes: string[] = [];
+            if (validationFlags?.noCompetition) notes.push('No competition - consider retire');
+            if (validationFlags?.selfCompetition) notes.push('Self competition detected');
+            if (validationFlags?.tooMuchCompetition) notes.push('Too much competition - 2+ sellers below min price');
+            if (notes.length > 0) {
+              productFields['Validation Notes'] = notes.join('; ');
+            }
+
+            await fetch(
+              `https://api.airtable.com/v0/${productBaseId}/${productTableId}/${productRecord.id}`,
+              {
+                method: 'PATCH',
+                headers: {
+                  'Authorization': `Bearer ${apiKey}`,
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ fields: productFields, typecast: true })
+              }
+            );
+          }
+        }
+      } catch (productError) {
+        console.error('Failed to update product validation:', productError);
+        // Don't fail the main request if product update fails
+      }
+    }
+
     return NextResponse.json({
       success: true,
       record: data,
