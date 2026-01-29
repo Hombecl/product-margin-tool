@@ -263,12 +263,12 @@ function checkCompetition() {
   if (!minPrice || !productData) return;
 
   const sellers = productData.sellers || [];
-  const sellersBelow = sellers.filter(s => s.totalPrice < minPrice && !s.isBuyBox);
+  const sellersBelow = sellers.filter(s => s.totalPrice != null && s.totalPrice < minPrice && !s.isBuyBox);
 
   if (sellersBelow.length >= 2) {
     validationFlags.tooMuchCompetition = true;
     document.querySelector('.flag-btn.too-much-competition').classList.add('active');
-    alert(`⚠️ Too Much Competition!\n\n${sellersBelow.length} sellers priced below your $${minPrice.toFixed(2)} minimum:\n\n${sellersBelow.map(s => `• ${s.sellerName}: $${s.totalPrice.toFixed(2)}`).join('\n')}`);
+    alert(`⚠️ Too Much Competition!\n\n${sellersBelow.length} sellers priced below your $${minPrice.toFixed(2)} minimum:\n\n${sellersBelow.map(s => `• ${s.sellerName || 'Unknown'}: $${s.totalPrice.toFixed(2)}`).join('\n')}`);
   } else {
     alert(`✅ Competition OK\n\nOnly ${sellersBelow.length} seller(s) below your minimum price.`);
   }
