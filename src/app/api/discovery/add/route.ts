@@ -26,37 +26,47 @@ interface AddProductsRequest {
   sessionId: string;
 }
 
+// Check existing products in Airtable - process in batches to avoid URL length limits
 async function checkExistingProducts(productIds: string[]): Promise<Set<string>> {
   if (!AIRTABLE_TOKEN || productIds.length === 0) return new Set();
 
   const existingIds = new Set<string>();
+  const batchSize = 30; // Safe batch size to avoid URL length limits
 
-  // Build formula to check multiple IDs
-  const idChecks = productIds.map(id => `{WM Product ID} = '${id}'`).join(', ');
-  const formula = `OR(${idChecks})`;
+  // Process in batches
+  for (let i = 0; i < productIds.length; i += batchSize) {
+    const batch = productIds.slice(i, i + batchSize);
+    const idChecks = batch.map(id => `{WM Product ID} = '${id}'`).join(', ');
+    const formula = `OR(${idChecks})`;
 
-  try {
-    const url = new URL(`https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${PRODUCT_TABLE_ID}`);
-    url.searchParams.set('filterByFormula', formula);
-    url.searchParams.set('fields[]', 'WM Product ID');
+    try {
+      const url = new URL(`https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${PRODUCT_TABLE_ID}`);
+      url.searchParams.set('filterByFormula', formula);
+      url.searchParams.set('fields[]', 'WM Product ID');
 
-    const response = await fetch(url.toString(), {
-      headers: {
-        'Authorization': `Bearer ${AIRTABLE_TOKEN}`
-      }
-    });
+      const response = await fetch(url.toString(), {
+        headers: {
+          'Authorization': `Bearer ${AIRTABLE_TOKEN}`
+        }
+      });
 
-    if (response.ok) {
-      const data = await response.json();
-      for (const record of data.records || []) {
-        const wmProductId = record.fields['WM Product ID'];
-        if (wmProductId) {
-          existingIds.add(wmProductId);
+      if (response.ok) {
+        const data = await response.json();
+        for (const record of data.records || []) {
+          const wmProductId = record.fields['WM Product ID'];
+          if (wmProductId) {
+            existingIds.add(wmProductId);
+          }
         }
       }
+
+      // Small delay between batches to avoid rate limiting
+      if (i + batchSize < productIds.length) {
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+    } catch (error) {
+      console.error('Error checking batch:', error);
     }
-  } catch (error) {
-    console.error('Error checking existing products:', error);
   }
 
   return existingIds;
@@ -154,10 +164,14 @@ export async function POST(request: NextRequest) {
     // Get current timestamp for sequence
     const timestamp = Date.now();
 
+    // Valid Discovery Tags choices in Airtable
+    const validDiscoveryTags = ['Grocery', 'Home', 'Electronics', 'Health', 'Beauty', 'Bestseller', 'High Margin', 'Low Price'];
+    const filteredTags = discoveryTags.filter(tag => validDiscoveryTags.includes(tag));
+
     // Prepare records for Airtable
-    const records = newProducts.map((product, index) => ({
-      fields: {
-        'WM Product ID': product.id,
+    // Note: WM Product ID is a formula field that extracts from Primary Supplier Link, so we don't set it directly
+    const records = newProducts.map((product, index) => {
+      const fields: Record<string, unknown> = {
         'Title': product.title,
         'Product Cost': product.productCost,
         'Approved Base Price': product.calculatedSellingPrice,
@@ -166,10 +180,16 @@ export async function POST(request: NextRequest) {
         'Primary Supplier Link': `https://www.walmart.com/ip/${product.id}`,
         'Discovery Source': discoverySource,
         'Discovery Date': new Date().toISOString(),
-        'Discovery Tags': discoveryTags,
         'Lister': 'Auto'
+      };
+
+      // Only add Discovery Tags if there are valid tags
+      if (filteredTags.length > 0) {
+        fields['Discovery Tags'] = filteredTags;
       }
-    }));
+
+      return { fields };
+    });
 
     // Add to Airtable in batches of 10
     const batchSize = 10;

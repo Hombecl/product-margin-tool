@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import {
   ArrowLeft,
@@ -10,7 +10,6 @@ import {
   Loader,
   ExternalLink,
   Star,
-  DollarSign,
   Package,
   BarChart3,
   AlertCircle,
@@ -29,7 +28,9 @@ import {
   Barcode,
   ShoppingCart,
   Settings,
-  Target
+  Target,
+  TrendingUp,
+  Award
 } from 'lucide-react';
 
 interface Product {
@@ -82,6 +83,52 @@ interface UsageStats {
   };
 }
 
+interface SalesInsights {
+  summary: {
+    totalDiscoveredProducts: number;
+    productsWithSales: number;
+    overallConversionRate: number;
+    totalUnitsSold: number;
+    total7DaySales: number;
+    total30DaySales: number;
+  };
+  bySource: Array<{
+    source: string;
+    totalProducts: number;
+    productsWithSales: number;
+    conversionRate: number;
+    totalUnitsSold: number;
+    total7DaySales: number;
+    total30DaySales: number;
+    avgSalesVelocity: number;
+    avgMarginPercent: number;
+    topProducts: Array<{
+      sku: string;
+      title: string;
+      unitsSold: number;
+      sales7Day: number;
+      marginPercent: number;
+    }>;
+  }>;
+  byTag: Array<{
+    tag: string;
+    totalProducts: number;
+    productsWithSales: number;
+    conversionRate: number;
+    totalUnitsSold: number;
+    avgSalesVelocity: number;
+  }>;
+  recentWinners: Array<{
+    sku: string;
+    title: string;
+    unitsSold: number;
+    sales7Day: number;
+    marginPercent: number;
+    discoverySource: string;
+    discoveryDate: string;
+  }>;
+}
+
 type SearchMode = 'keyword' | 'category' | 'custom';
 type SortOption = 'best_seller' | 'best_match' | 'price_low' | 'price_high';
 
@@ -120,7 +167,6 @@ export default function ProductDiscovery() {
   const [additionalCost, setAdditionalCost] = useState(4.50);
   const [targetMarginPercent, setTargetMarginPercent] = useState(15);
   const [targetProductCount, setTargetProductCount] = useState(100);
-  const [autoFetchPages, setAutoFetchPages] = useState(false);
   const [platformFeePercent, setPlatformFeePercent] = useState(10.5);
 
   // Category state
@@ -161,8 +207,84 @@ export default function ProductDiscovery() {
   // Stats state
   const [stats, setStats] = useState<UsageStats | null>(null);
 
+  // Sales Insights state (integrated inline)
+  const [salesInsights, setSalesInsights] = useState<SalesInsights | null>(null);
+  const [loadingSalesInsights, setLoadingSalesInsights] = useState(false);
+  const [showWinners, setShowWinners] = useState(false);
+
   // Session ID for tracking
   const [sessionId] = useState(() => `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`);
+
+  // Cancel flag for auto-fetch (use ref so it works in async loop)
+  const autoFetchCancelledRef = useRef(false);
+  // Track if we're in auto-fetch mode (for showing cancel button)
+  const [isAutoFetching, setIsAutoFetching] = useState(false);
+
+  // Load settings from localStorage on mount
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const savedOperator = localStorage.getItem('productDiscovery_operator');
+      const savedStore = localStorage.getItem('productDiscovery_store');
+      const savedAdditionalCost = localStorage.getItem('productDiscovery_additionalCost');
+      const savedTargetMargin = localStorage.getItem('productDiscovery_targetMarginPercent');
+      const savedPlatformFee = localStorage.getItem('productDiscovery_platformFeePercent');
+      const savedTargetCount = localStorage.getItem('productDiscovery_targetProductCount');
+      const savedExcludedBrands = localStorage.getItem('productDiscovery_excludedBrands');
+      const savedMaxPrice = localStorage.getItem('productDiscovery_maxPrice');
+      const savedMinRating = localStorage.getItem('productDiscovery_minRating');
+
+      if (savedOperator) setOperator(savedOperator);
+      if (savedStore) setStore(savedStore);
+      if (savedAdditionalCost) setAdditionalCost(parseFloat(savedAdditionalCost));
+      if (savedTargetMargin) setTargetMarginPercent(parseFloat(savedTargetMargin));
+      if (savedPlatformFee) setPlatformFeePercent(parseFloat(savedPlatformFee));
+      if (savedTargetCount) setTargetProductCount(parseInt(savedTargetCount));
+      if (savedMaxPrice) setMaxPrice(parseFloat(savedMaxPrice));
+      if (savedMinRating) setMinRating(parseFloat(savedMinRating));
+      if (savedExcludedBrands) {
+        try {
+          setExcludedBrands(JSON.parse(savedExcludedBrands));
+        } catch {
+          // Use defaults if parse fails
+        }
+      }
+    }
+  }, []);
+
+  // Save settings to localStorage when they change
+  useEffect(() => {
+    if (typeof window !== 'undefined' && operator) {
+      localStorage.setItem('productDiscovery_operator', operator);
+    }
+  }, [operator]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('productDiscovery_store', store);
+    }
+  }, [store]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('productDiscovery_additionalCost', additionalCost.toString());
+      localStorage.setItem('productDiscovery_targetMarginPercent', targetMarginPercent.toString());
+      localStorage.setItem('productDiscovery_platformFeePercent', platformFeePercent.toString());
+      localStorage.setItem('productDiscovery_targetProductCount', targetProductCount.toString());
+    }
+  }, [additionalCost, targetMarginPercent, platformFeePercent, targetProductCount]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('productDiscovery_maxPrice', maxPrice.toString());
+      localStorage.setItem('productDiscovery_minRating', minRating.toString());
+    }
+  }, [maxPrice, minRating]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('productDiscovery_excludedBrands', JSON.stringify(excludedBrands));
+    }
+  }, [excludedBrands]);
 
   // Fetch categories on mount
   useEffect(() => {
@@ -192,6 +314,51 @@ export default function ProductDiscovery() {
   useEffect(() => {
     fetchStats();
   }, [fetchStats]);
+
+  // Fetch sales insights
+  const fetchSalesInsights = useCallback(async () => {
+    setLoadingSalesInsights(true);
+    try {
+      const res = await fetch('/api/discovery/sales-insights');
+      if (res.ok) {
+        const data = await res.json();
+        setSalesInsights(data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch sales insights:', err);
+    } finally {
+      setLoadingSalesInsights(false);
+    }
+  }, []);
+
+  // Fetch sales insights on mount (for inline suggestions)
+  useEffect(() => {
+    fetchSalesInsights();
+  }, [fetchSalesInsights]);
+
+  // Extract top performing keywords for suggestions
+  const suggestedKeywords = React.useMemo(() => {
+    if (!salesInsights) return [];
+    return salesInsights.bySource
+      .filter(s => s.source.startsWith('Keyword:') && s.conversionRate > 0)
+      .sort((a, b) => b.totalUnitsSold - a.totalUnitsSold)
+      .slice(0, 6)
+      .map(s => ({
+        keyword: s.source.replace('Keyword: ', '').split(' (page')[0].trim(),
+        unitsSold: s.totalUnitsSold,
+        conversionRate: s.conversionRate
+      }));
+  }, [salesInsights]);
+
+  // Handle clicking a suggested keyword
+  const handleSuggestedKeyword = (keyword: string) => {
+    setQuery(keyword);
+    setSearchMode('keyword');
+    // Auto-search after setting query
+    setTimeout(() => {
+      handleKeywordSearch(1, false);
+    }, 100);
+  };
 
   // Keyword search handler
   const handleKeywordSearch = async (pageNum = 1, append = false) => {
@@ -260,6 +427,14 @@ export default function ProductDiscovery() {
         setError('No products found matching your criteria');
       }
 
+      // Auto-select new products after search (only on initial search, not append)
+      if (!append && data.products?.length > 0) {
+        const newProductIds = (data.products as Product[])
+          .filter(p => !p.isExisting && !excludedBrands.some(brand => p.title.toLowerCase().includes(brand.toLowerCase())))
+          .map(p => p.id);
+        setSelectedProducts(new Set(newProductIds));
+      }
+
       fetchStats();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Search failed');
@@ -276,6 +451,11 @@ export default function ProductDiscovery() {
     }
   };
 
+  // Cancel auto-fetch
+  const handleCancelAutoFetch = () => {
+    autoFetchCancelledRef.current = true;
+  };
+
   // Auto-fetch multiple pages to reach target count
   const handleAutoFetchPages = async () => {
     if (!query.trim()) {
@@ -289,6 +469,8 @@ export default function ProductDiscovery() {
     }
 
     setLoading(true);
+    setIsAutoFetching(true);
+    autoFetchCancelledRef.current = false;
     setError('');
     setSuccess('');
     setProducts([]);
@@ -296,10 +478,33 @@ export default function ProductDiscovery() {
 
     let allProducts: Product[] = [];
     let page = 1;
-    const maxPages = Math.ceil(targetProductCount / 40); // ~40 products per page
+    // Fetch more pages to account for filtering - up to 3x target to ensure we get enough
+    const maxPages = Math.ceil((targetProductCount * 3) / 40);
+    const absoluteMaxPages = 15; // Hard limit to prevent excessive API calls
+    let wasCancelled = false;
 
     try {
-      while (allProducts.length < targetProductCount && page <= maxPages) {
+      // Helper to count "addable" products (new, not existing in Airtable, not excluded brand)
+      const countAddableProducts = (products: Product[]) => {
+        return products.filter(p => {
+          const isNew = !p.isExisting;
+          const notExcluded = !excludedBrands.some(brand =>
+            p.title.toLowerCase().includes(brand.toLowerCase())
+          );
+          return isNew && notExcluded;
+        }).length;
+      };
+
+      while (page <= Math.min(maxPages, absoluteMaxPages)) {
+        // Check if cancelled
+        if (autoFetchCancelledRef.current) {
+          wasCancelled = true;
+          break;
+        }
+
+        // Update progress for user feedback
+        setSuccess(`Fetching page ${page}... (${allProducts.length} products loaded)`);
+
         const res = await fetch('/api/discovery/search', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -325,41 +530,63 @@ export default function ProductDiscovery() {
           throw new Error(data.error || 'Search failed');
         }
 
+        // Stop if API returns 0 products - truly no more results
         if (!data.products || data.products.length === 0) {
-          break; // No more products
+          break;
         }
 
-        // Deduplicate
+        // Deduplicate against already fetched products
         const existingIds = new Set(allProducts.map(p => p.id));
         const newProducts = data.products.filter((p: Product) => !existingIds.has(p.id));
+
+        // If we got no NEW products from this page (all are duplicates of what we already have), stop
+        if (newProducts.length === 0 && allProducts.length > 0) {
+          break;
+        }
+
         allProducts = [...allProducts, ...newProducts];
 
         setProducts([...allProducts]);
         setTotalResults(data.totalResults || allProducts.length);
         setCurrentPage(page);
-        setTotalPages(data.totalPages || page);
+        setTotalPages(Math.max(data.totalPages || page, absoluteMaxPages));
 
-        if (!data.hasMore) {
-          break; // No more pages
+        // Check if we have enough ADDABLE products (accounting for filters)
+        const addableCount = countAddableProducts(allProducts);
+        if (addableCount >= targetProductCount) {
+          break; // We have enough products that can be added
         }
 
+        // Continue to next page - IGNORE hasMore flag from API (it's unreliable)
         page++;
 
-        // Small delay between requests
-        if (page <= maxPages && allProducts.length < targetProductCount) {
-          await new Promise(resolve => setTimeout(resolve, 500));
-        }
+        // Small delay between requests to avoid rate limiting
+        await new Promise(resolve => setTimeout(resolve, 400));
       }
 
+      const addableCount = countAddableProducts(allProducts);
+      const existingCount = allProducts.filter(p => p.isExisting).length;
       setHasMore(false);
       setLastSearchSource(`Keyword: ${query}`);
-      setSuccess(`Loaded ${allProducts.length} products from ${page} page(s)`);
+
+      if (wasCancelled) {
+        setSuccess(`Cancelled after ${page} page(s) - ${allProducts.length} products loaded (${addableCount} new, ${existingCount} in Airtable)`);
+      } else {
+        setSuccess(`Loaded ${allProducts.length} products from ${page} page(s) - ${addableCount} new, ${existingCount} already in Airtable`);
+      }
+
+      // Auto-select new products after search
+      const newProductIds = allProducts
+        .filter(p => !p.isExisting && !excludedBrands.some(brand => p.title.toLowerCase().includes(brand.toLowerCase())))
+        .map(p => p.id);
+      setSelectedProducts(new Set(newProductIds));
 
       fetchStats();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Search failed');
     } finally {
       setLoading(false);
+      setIsAutoFetching(false);
     }
   };
 
@@ -395,12 +622,20 @@ export default function ProductDiscovery() {
         store: string;
         operator: string;
         sessionId: string;
+        additionalCost: number;
+        targetMarginPercent: number;
+        platformFeePercent: number;
+        checkDuplicates: boolean;
       } = {
         maxPrice,
         minRating,
         store,
         operator: operator.trim(),
-        sessionId
+        sessionId,
+        additionalCost,
+        targetMarginPercent,
+        platformFeePercent,
+        checkDuplicates: true
       };
 
       if (searchMode === 'category') {
@@ -427,6 +662,12 @@ export default function ProductDiscovery() {
 
       if (data.products?.length === 0) {
         setError('No products found in this category matching your criteria');
+      } else if (data.products?.length > 0) {
+        // Auto-select new products after category browse
+        const newProductIds = (data.products as Product[])
+          .filter(p => !p.isExisting && !excludedBrands.some(brand => p.title.toLowerCase().includes(brand.toLowerCase())))
+          .map(p => p.id);
+        setSelectedProducts(new Set(newProductIds));
       }
 
       if (data.fallback) {
@@ -684,8 +925,15 @@ export default function ProductDiscovery() {
 
   // Quick Add - directly add to Airtable without fetching details (UPC will be fetched by n8n workflow)
   const handleQuickAdd = async () => {
+    const productsToAdd = filteredProducts.filter(p => selectedProducts.has(p.id) && !p.isExisting);
+
     if (selectedProducts.size === 0) {
       setError('Please select at least one product');
+      return;
+    }
+
+    if (productsToAdd.length === 0) {
+      setError('All selected products already exist in Airtable');
       return;
     }
 
@@ -694,13 +942,6 @@ export default function ProductDiscovery() {
     setSuccess('');
 
     try {
-      const productsToAdd = filteredProducts.filter(p => selectedProducts.has(p.id) && !p.isExisting);
-
-      if (productsToAdd.length === 0) {
-        setError('All selected products already exist in Airtable');
-        return;
-      }
-
       const res = await fetch('/api/discovery/add', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -708,7 +949,7 @@ export default function ProductDiscovery() {
           products: productsToAdd,
           store,
           discoverySource: lastSearchSource,
-          discoveryTags: searchMode === 'category' ? ['Bestseller'] : ['Quick Add'],
+          discoveryTags: searchMode === 'category' ? ['Bestseller'] : [],
           operator: operator.trim(),
           sessionId
         })
@@ -971,36 +1212,72 @@ export default function ProductDiscovery() {
 
           {/* Keyword Search Input */}
           {searchMode === 'keyword' && (
-            <div className="flex gap-3 mb-4">
-              <div className="flex-1 relative">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
-                <input
-                  type="text"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                  placeholder="Search Walmart products (e.g., trash bags, paper towels)"
-                  className="w-full pl-10 pr-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
+            <>
+              <div className="flex gap-3 mb-3">
+                <div className="flex-1 relative">
+                  <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={20} />
+                  <input
+                    type="text"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+                    placeholder="Search Walmart products (e.g., trash bags, paper towels)"
+                    className="w-full pl-10 pr-4 py-3 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <button
+                  onClick={handleSearch}
+                  disabled={loading}
+                  className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 font-medium"
+                >
+                  {loading ? <Loader size={20} className="animate-spin" /> : <Search size={20} />}
+                  Search
+                </button>
+                <button
+                  onClick={handleAutoFetchPages}
+                  disabled={loading}
+                  className="flex items-center gap-2 px-4 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50 font-medium"
+                  title={`Auto-fetch up to ${targetProductCount} products`}
+                >
+                  {isAutoFetching ? <Loader size={20} className="animate-spin" /> : <Target size={20} />}
+                  Auto ({targetProductCount})
+                </button>
+                {isAutoFetching && (
+                  <button
+                    onClick={handleCancelAutoFetch}
+                    className="flex items-center gap-2 px-4 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium"
+                    title="Cancel auto-fetch"
+                  >
+                    <X size={20} />
+                    Cancel
+                  </button>
+                )}
               </div>
-              <button
-                onClick={handleSearch}
-                disabled={loading}
-                className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 font-medium"
-              >
-                {loading ? <Loader size={20} className="animate-spin" /> : <Search size={20} />}
-                Search
-              </button>
-              <button
-                onClick={handleAutoFetchPages}
-                disabled={loading}
-                className="flex items-center gap-2 px-4 py-3 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-colors disabled:opacity-50 font-medium"
-                title={`Auto-fetch up to ${targetProductCount} products`}
-              >
-                {loading ? <Loader size={20} className="animate-spin" /> : <Target size={20} />}
-                Auto ({targetProductCount})
-              </button>
-            </div>
+
+              {/* Suggested Keywords - based on past sales performance */}
+              {suggestedKeywords.length > 0 && (
+                <div className="mb-4">
+                  <div className="flex items-center gap-2 mb-2">
+                    <TrendingUp size={14} className="text-emerald-600" />
+                    <span className="text-xs font-medium text-slate-600">Proven Keywords (based on sales)</span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {suggestedKeywords.map((item) => (
+                      <button
+                        key={item.keyword}
+                        onClick={() => {
+                          setQuery(item.keyword);
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 text-sm rounded-full transition-colors"
+                      >
+                        <span>{item.keyword}</span>
+                        <span className="text-xs bg-emerald-200 px-1.5 py-0.5 rounded-full">{item.unitsSold} sold</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
           )}
 
           {/* Category Selection */}
@@ -1168,6 +1445,135 @@ export default function ProductDiscovery() {
           <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 mb-6 flex items-center gap-3">
             <CheckCircle className="text-emerald-500 flex-shrink-0" size={20} />
             <span className="text-emerald-700">{success}</span>
+          </div>
+        )}
+
+        {/* Recent Winners - Collapsible */}
+        {salesInsights && salesInsights.recentWinners.length > 0 && (
+          <div className="bg-white rounded-xl border border-slate-200 mb-6 overflow-hidden">
+            <button
+              onClick={() => setShowWinners(!showWinners)}
+              className="w-full flex items-center justify-between p-4 hover:bg-slate-50 transition-colors"
+            >
+              <div className="flex items-center gap-3">
+                <Award size={18} className="text-amber-500" />
+                <span className="font-semibold text-slate-700">Recent Winners</span>
+                <span className="text-xs bg-emerald-100 text-emerald-700 px-2 py-0.5 rounded-full">
+                  {salesInsights.recentWinners.length} products with sales
+                </span>
+                {salesInsights.summary && (
+                  <span className="text-xs text-slate-500">
+                    {salesInsights.summary.overallConversionRate}% conversion rate
+                  </span>
+                )}
+              </div>
+              {showWinners ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+            </button>
+
+            {showWinners && (
+              <div className="border-t border-slate-200 p-4">
+                {/* Quick Stats */}
+                <div className="grid grid-cols-4 gap-3 mb-4">
+                  <div className="bg-blue-50 rounded-lg p-2 text-center">
+                    <div className="text-lg font-bold text-blue-700">{salesInsights.summary.totalDiscoveredProducts}</div>
+                    <div className="text-xs text-blue-600">Discovered</div>
+                  </div>
+                  <div className="bg-emerald-50 rounded-lg p-2 text-center">
+                    <div className="text-lg font-bold text-emerald-700">{salesInsights.summary.productsWithSales}</div>
+                    <div className="text-xs text-emerald-600">With Sales</div>
+                  </div>
+                  <div className="bg-orange-50 rounded-lg p-2 text-center">
+                    <div className="text-lg font-bold text-orange-700">{salesInsights.summary.totalUnitsSold}</div>
+                    <div className="text-xs text-orange-600">Units Sold</div>
+                  </div>
+                  <div className="bg-purple-50 rounded-lg p-2 text-center">
+                    <div className="text-lg font-bold text-purple-700">{salesInsights.summary.total7DaySales}</div>
+                    <div className="text-xs text-purple-600">7D Sales</div>
+                  </div>
+                </div>
+
+                {/* Top Products Table */}
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-200 text-xs">
+                        <th className="text-left py-2 px-2 text-slate-500 font-medium">Product</th>
+                        <th className="text-right py-2 px-2 text-slate-500 font-medium">Units</th>
+                        <th className="text-right py-2 px-2 text-slate-500 font-medium">7D</th>
+                        <th className="text-right py-2 px-2 text-slate-500 font-medium">Margin</th>
+                        <th className="text-left py-2 px-2 text-slate-500 font-medium">Source</th>
+                        <th className="text-center py-2 px-2 text-slate-500 font-medium">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {salesInsights.recentWinners.slice(0, 5).map((product, idx) => {
+                        const sourceKeyword = product.discoverySource.replace('Keyword: ', '').split(' (page')[0].trim();
+                        return (
+                          <tr key={idx} className="border-b border-slate-100 hover:bg-slate-50">
+                            <td className="py-2 px-2">
+                              <div className="font-medium text-slate-700 truncate max-w-[200px]">{product.title}</div>
+                              <div className="text-xs text-slate-400">{product.sku}</div>
+                            </td>
+                            <td className="py-2 px-2 text-right font-semibold text-emerald-600">{product.unitsSold}</td>
+                            <td className="py-2 px-2 text-right text-slate-600">{product.sales7Day}</td>
+                            <td className="py-2 px-2 text-right text-blue-600">{product.marginPercent}%</td>
+                            <td className="py-2 px-2 text-xs text-slate-500 max-w-[120px] truncate">{sourceKeyword}</td>
+                            <td className="py-2 px-2 text-center">
+                              {product.discoverySource.startsWith('Keyword:') && (
+                                <button
+                                  onClick={() => {
+                                    setQuery(sourceKeyword);
+                                    setSearchMode('keyword');
+                                  }}
+                                  className="text-xs px-2 py-1 bg-blue-100 text-blue-700 rounded hover:bg-blue-200"
+                                >
+                                  Search
+                                </button>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                {/* Top Sources */}
+                {salesInsights.bySource.filter(s => s.totalUnitsSold > 0).length > 0 && (
+                  <div className="mt-4 pt-4 border-t border-slate-200">
+                    <div className="text-xs font-medium text-slate-600 mb-2">Top Performing Sources</div>
+                    <div className="flex flex-wrap gap-2">
+                      {salesInsights.bySource
+                        .filter(s => s.totalUnitsSold > 0)
+                        .slice(0, 5)
+                        .map((source) => {
+                          const keyword = source.source.replace('Keyword: ', '').replace('Category: ', '').split(' (page')[0].trim();
+                          return (
+                            <button
+                              key={source.source}
+                              onClick={() => {
+                                if (source.source.startsWith('Keyword:')) {
+                                  setQuery(keyword);
+                                  setSearchMode('keyword');
+                                }
+                              }}
+                              className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs transition-colors ${
+                                source.source.startsWith('Keyword:')
+                                  ? 'bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 cursor-pointer'
+                                  : 'bg-slate-100 border border-slate-200 text-slate-600'
+                              }`}
+                            >
+                              <span className="font-medium">{keyword}</span>
+                              <span className="bg-white px-1.5 py-0.5 rounded text-emerald-600">{source.totalUnitsSold} sold</span>
+                              <span className="text-slate-400">{source.conversionRate}%</span>
+                            </button>
+                          );
+                        })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 

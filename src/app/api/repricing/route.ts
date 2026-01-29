@@ -29,8 +29,9 @@ export async function POST(request: NextRequest) {
     const { sku, store, targetPrice, productCost, competitorPrice, undercut, marginPercent, priceSource, validationStatus, validationFlags, wmProductId, fromExtension } = body;
 
     // Get Airtable config from environment
-    const apiKey = process.env.AIRTABLE_API_KEY;
-    const baseId = process.env.AIRTABLE_REPRICING_BASE_ID || process.env.AIRTABLE_BASE_ID;
+    // Trim API key to handle potential newline characters from copy/paste
+    const apiKey = process.env.AIRTABLE_API_KEY?.trim();
+    const baseId = (process.env.AIRTABLE_REPRICING_BASE_ID || process.env.AIRTABLE_BASE_ID)?.trim();
     // Use Table ID directly to avoid encoding issues
     const tableId = 'tblYBta18ZZklF5rv';
 
@@ -188,5 +189,17 @@ export async function GET() {
   return NextResponse.json({
     configured: hasConfig,
     tableName: process.env.AIRTABLE_REPRICING_TABLE_NAME || 'Price Schedule'
+  });
+}
+
+// CORS preflight handler
+export async function OPTIONS() {
+  return new NextResponse(null, {
+    status: 200,
+    headers: {
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+      'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+    },
   });
 }

@@ -5,9 +5,54 @@ const SCRAPINGBEE_API_KEY = process.env.SCRAPINGBEE_API_KEY;
 const AIRTABLE_TOKEN = process.env.AIRTABLE_API_KEY;
 const AIRTABLE_BASE_ID = 'appRCQASsApV4C33N';
 const SCRAPE_LOG_TABLE_ID = 'tbl1Csm5TFd7O3Prw';
+const AIRTABLE_PRODUCT_TABLE_ID = 'tblo1uuy8Nc9CSjX4';
 
 // Credits estimation for category browse
 const CREDITS_PER_CATEGORY = 10;
+
+// Check existing products in Airtable - process in batches to avoid URL length limits
+async function checkExistingProducts(productIds: string[]): Promise<Set<string>> {
+  if (!AIRTABLE_TOKEN || productIds.length === 0) return new Set();
+
+  const existingIds = new Set<string>();
+  const batchSize = 30;
+
+  for (let i = 0; i < productIds.length; i += batchSize) {
+    const batch = productIds.slice(i, i + batchSize);
+    const idChecks = batch.map(id => `{WM Product ID} = '${id}'`).join(', ');
+    const formula = `OR(${idChecks})`;
+
+    try {
+      const url = new URL(`https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${AIRTABLE_PRODUCT_TABLE_ID}`);
+      url.searchParams.set('filterByFormula', formula);
+      url.searchParams.set('fields[]', 'WM Product ID');
+
+      const response = await fetch(url.toString(), {
+        headers: {
+          'Authorization': `Bearer ${AIRTABLE_TOKEN}`
+        }
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        for (const record of data.records || []) {
+          const wmProductId = record.fields['WM Product ID'];
+          if (wmProductId) {
+            existingIds.add(wmProductId);
+          }
+        }
+      }
+
+      if (i + batchSize < productIds.length) {
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+    } catch (error) {
+      console.error('Error checking batch:', error);
+    }
+  }
+
+  return existingIds;
+}
 
 interface WalmartProduct {
   id: string;
@@ -117,7 +162,12 @@ export async function POST(request: NextRequest) {
       minRating = 0,
       store = 'WM19',
       operator = 'Unknown',
-      sessionId = ''
+      sessionId = '',
+      // Custom pricing settings (matching search API)
+      additionalCost = 4.50,
+      targetMarginPercent = 15,
+      platformFeePercent = 10.5,
+      checkDuplicates = true
     } = body;
 
     // Determine the URL to scrape
@@ -185,7 +235,11 @@ export async function POST(request: NextRequest) {
         minRating,
         store,
         operator,
-        sessionId
+        sessionId,
+        additionalCost,
+        targetMarginPercent,
+        platformFeePercent,
+        checkDuplicates
       );
     }
 
@@ -221,12 +275,19 @@ export async function POST(request: NextRequest) {
       return isWalmart && withinPrice && meetsRating;
     });
 
-    // Calculate selling price for each product
+    // Check for existing products in Airtable (deduplication)
+    let existingProductIds = new Set<string>();
+    if (checkDuplicates && filteredProducts.length > 0) {
+      const productIds = filteredProducts.map((p: WalmartProduct) => p.id);
+      existingProductIds = await checkExistingProducts(productIds);
+    }
+
+    // Calculate selling price for each product using custom settings
+    const marginDivisor = 1 - (platformFeePercent / 100) - (targetMarginPercent / 100);
     const productsWithPricing = filteredProducts.map((product: WalmartProduct) => {
       const cost = product.price || 0;
-      const additionalCost = 4.50;
-      const sellingPrice = (cost + additionalCost) / 0.745;
-      const margin = sellingPrice - cost - additionalCost - (sellingPrice * 0.105);
+      const sellingPrice = (cost + additionalCost) / marginDivisor;
+      const margin = sellingPrice - cost - additionalCost - (sellingPrice * (platformFeePercent / 100));
       const marginPercent = (margin / sellingPrice) * 100;
 
       return {
@@ -234,7 +295,8 @@ export async function POST(request: NextRequest) {
         productCost: cost,
         calculatedSellingPrice: Math.ceil(sellingPrice * 100) / 100,
         calculatedMargin: Math.round(margin * 100) / 100,
-        calculatedMarginPercent: Math.round(marginPercent * 10) / 10
+        calculatedMarginPercent: Math.round(marginPercent * 10) / 10,
+        isExisting: existingProductIds.has(product.id)
       };
     });
 
@@ -276,7 +338,11 @@ async function fallbackCategorySearch(
   minRating: number,
   store: string,
   operator: string,
-  sessionId: string
+  sessionId: string,
+  additionalCost: number = 4.50,
+  targetMarginPercent: number = 15,
+  platformFeePercent: number = 10.5,
+  checkDuplicates: boolean = true
 ) {
   if (!SCRAPINGBEE_API_KEY) {
     return NextResponse.json({ error: 'ScrapingBee API key not configured' }, { status: 500 });
@@ -301,19 +367,26 @@ async function fallbackCategorySearch(
 
     // Filter products
     const filteredProducts = allProducts.filter((product: WalmartProduct) => {
-      const isWalmart = product.seller_name?.toLowerCase().includes('walmart') ?? true;
+      const isWalmart = !product.seller_name || product.seller_name.toLowerCase().includes('walmart');
       const inStock = !product.out_of_stock;
       const withinPrice = product.price && product.price <= maxPrice;
       const meetsRating = !minRating || !product.rating || product.rating >= minRating;
       return isWalmart && inStock && withinPrice && meetsRating;
     });
 
-    // Calculate pricing
+    // Check for existing products in Airtable (deduplication)
+    let existingProductIds = new Set<string>();
+    if (checkDuplicates && filteredProducts.length > 0) {
+      const productIds = filteredProducts.map((p: WalmartProduct) => p.id);
+      existingProductIds = await checkExistingProducts(productIds);
+    }
+
+    // Calculate pricing using custom settings
+    const marginDivisor = 1 - (platformFeePercent / 100) - (targetMarginPercent / 100);
     const productsWithPricing = filteredProducts.map((product: WalmartProduct) => {
       const cost = product.price || 0;
-      const additionalCost = 4.50;
-      const sellingPrice = (cost + additionalCost) / 0.745;
-      const margin = sellingPrice - cost - additionalCost - (sellingPrice * 0.105);
+      const sellingPrice = (cost + additionalCost) / marginDivisor;
+      const margin = sellingPrice - cost - additionalCost - (sellingPrice * (platformFeePercent / 100));
       const marginPercent = (margin / sellingPrice) * 100;
 
       return {
@@ -321,7 +394,8 @@ async function fallbackCategorySearch(
         productCost: cost,
         calculatedSellingPrice: Math.ceil(sellingPrice * 100) / 100,
         calculatedMargin: Math.round(margin * 100) / 100,
-        calculatedMarginPercent: Math.round(marginPercent * 10) / 10
+        calculatedMarginPercent: Math.round(marginPercent * 10) / 10,
+        isExisting: existingProductIds.has(product.id)
       };
     });
 

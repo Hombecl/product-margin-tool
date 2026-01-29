@@ -25,22 +25,33 @@ export async function GET() {
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     const monthStartISO = monthStart.toISOString().split('T')[0];
 
-    // Fetch all logs for this month
-    const url = new URL(`https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${SCRAPE_LOG_TABLE_ID}`);
-    url.searchParams.set('filterByFormula', `IS_AFTER({Timestamp}, '${monthStartISO}')`);
+    // Fetch all logs for this month with pagination
+    const allRecords: Array<{ fields: Record<string, unknown> }> = [];
+    let offset: string | undefined;
 
-    const response = await fetch(url.toString(), {
-      headers: {
-        'Authorization': `Bearer ${AIRTABLE_TOKEN}`
+    do {
+      const url = new URL(`https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${SCRAPE_LOG_TABLE_ID}`);
+      url.searchParams.set('filterByFormula', `IS_AFTER({Timestamp}, '${monthStartISO}')`);
+      if (offset) {
+        url.searchParams.set('offset', offset);
       }
-    });
 
-    if (!response.ok) {
-      throw new Error('Failed to fetch stats');
-    }
+      const response = await fetch(url.toString(), {
+        headers: {
+          'Authorization': `Bearer ${AIRTABLE_TOKEN}`
+        }
+      });
 
-    const data = await response.json();
-    const records = data.records || [];
+      if (!response.ok) {
+        throw new Error('Failed to fetch stats');
+      }
+
+      const data = await response.json();
+      allRecords.push(...(data.records || []));
+      offset = data.offset; // Will be undefined if no more pages
+    } while (offset);
+
+    const records = allRecords;
 
     // Calculate stats
     let totalSearches = 0;
@@ -62,12 +73,12 @@ export async function GET() {
 
     for (const record of records) {
       const fields = record.fields;
-      const action = fields['Action'] || 'Unknown';
-      const creditsUsed = fields['Credits Used'] || 0;
-      const productsAdded = fields['Products Added'] || 0;
-      const resultsCount = fields['Results Count'] || 0;
-      const store = fields['Store'] || 'Unknown';
-      const operator = fields['Operator'] || 'Unknown';
+      const action = String(fields['Action'] || 'Unknown');
+      const creditsUsed = Number(fields['Credits Used']) || 0;
+      const productsAdded = Number(fields['Products Added']) || 0;
+      const resultsCount = Number(fields['Results Count']) || 0;
+      const store = String(fields['Store'] || 'Unknown');
+      const operator = String(fields['Operator'] || 'Unknown');
 
       if (action === 'Search') {
         totalSearches++;
@@ -95,9 +106,9 @@ export async function GET() {
       // Recent activity (last 20)
       if (recentActivity.length < 20) {
         recentActivity.push({
-          timestamp: fields['Timestamp'],
+          timestamp: String(fields['Timestamp'] || ''),
           action,
-          query: fields['Query'] || '',
+          query: String(fields['Query'] || ''),
           resultsCount,
           productsAdded,
           operator,

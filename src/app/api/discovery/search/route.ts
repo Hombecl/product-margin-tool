@@ -41,38 +41,47 @@ interface SearchResult {
 
 const AIRTABLE_PRODUCT_TABLE_ID = 'tblo1uuy8Nc9CSjX4';
 
-// Check existing products in Airtable
+// Check existing products in Airtable - process in batches to avoid URL length limits
 async function checkExistingProducts(productIds: string[]): Promise<Set<string>> {
   if (!AIRTABLE_TOKEN || productIds.length === 0) return new Set();
 
   const existingIds = new Set<string>();
+  const batchSize = 30; // Safe batch size to avoid URL length limits
 
-  // Build formula to check multiple IDs
-  const idChecks = productIds.map(id => `{WM Product ID} = '${id}'`).join(', ');
-  const formula = `OR(${idChecks})`;
+  // Process in batches
+  for (let i = 0; i < productIds.length; i += batchSize) {
+    const batch = productIds.slice(i, i + batchSize);
+    const idChecks = batch.map(id => `{WM Product ID} = '${id}'`).join(', ');
+    const formula = `OR(${idChecks})`;
 
-  try {
-    const url = new URL(`https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${AIRTABLE_PRODUCT_TABLE_ID}`);
-    url.searchParams.set('filterByFormula', formula);
-    url.searchParams.set('fields[]', 'WM Product ID');
+    try {
+      const url = new URL(`https://api.airtable.com/v0/${AIRTABLE_BASE_ID}/${AIRTABLE_PRODUCT_TABLE_ID}`);
+      url.searchParams.set('filterByFormula', formula);
+      url.searchParams.set('fields[]', 'WM Product ID');
 
-    const response = await fetch(url.toString(), {
-      headers: {
-        'Authorization': `Bearer ${AIRTABLE_TOKEN}`
-      }
-    });
+      const response = await fetch(url.toString(), {
+        headers: {
+          'Authorization': `Bearer ${AIRTABLE_TOKEN}`
+        }
+      });
 
-    if (response.ok) {
-      const data = await response.json();
-      for (const record of data.records || []) {
-        const wmProductId = record.fields['WM Product ID'];
-        if (wmProductId) {
-          existingIds.add(wmProductId);
+      if (response.ok) {
+        const data = await response.json();
+        for (const record of data.records || []) {
+          const wmProductId = record.fields['WM Product ID'];
+          if (wmProductId) {
+            existingIds.add(wmProductId);
+          }
         }
       }
+
+      // Small delay between batches to avoid rate limiting
+      if (i + batchSize < productIds.length) {
+        await new Promise(resolve => setTimeout(resolve, 50));
+      }
+    } catch (error) {
+      console.error('Error checking batch:', error);
     }
-  } catch (error) {
-    console.error('Error checking existing products:', error);
   }
 
   return existingIds;
@@ -179,12 +188,12 @@ export async function POST(request: NextRequest) {
 
     // Filter products
     const filteredProducts = allProducts.filter((product: WalmartProduct) => {
-      // Must be sold by Walmart
-      const isWalmart = product.seller_name?.toLowerCase().includes('walmart') ?? false;
+      // Must be sold by Walmart (or no seller specified - assume Walmart for marketplace items)
+      const isWalmart = !product.seller_name || product.seller_name.toLowerCase().includes('walmart');
       // Must be in stock
       const inStock = !product.out_of_stock;
-      // Must be within price range
-      const withinPrice = product.price && product.price <= maxPrice;
+      // Must be within price range (allow products without price for now)
+      const withinPrice = !product.price || product.price <= maxPrice;
       // Must meet minimum rating (if rating exists)
       const meetsRating = !minRating || !product.rating || product.rating >= minRating;
 
@@ -217,11 +226,17 @@ export async function POST(request: NextRequest) {
       };
     });
 
-    // Estimate pagination info
-    // ScrapingBee typically returns ~40 products per page
+    // Pagination info - be optimistic about hasMore
+    // ScrapingBee's total_results can be unreliable, so we assume more pages exist
     const productsPerPage = 40;
-    const estimatedTotalPages = Math.ceil(data.total_results / productsPerPage) || 1;
-    const hasMore = page < estimatedTotalPages && allProducts.length >= productsPerPage;
+    const gotFullPage = allProducts.length >= productsPerPage - 5; // Allow some slack
+
+    // If we got a near-full page, assume there are more. Otherwise trust total_results if provided.
+    const totalResults = data.total_results || (gotFullPage ? 1000 : allProducts.length);
+    const estimatedTotalPages = Math.max(Math.ceil(totalResults / productsPerPage), gotFullPage ? 25 : 1);
+
+    // hasMore is true if we got products - let frontend decide when to stop based on target count
+    const hasMore = allProducts.length > 0;
 
     // Log the scrape
     await logScrape({
