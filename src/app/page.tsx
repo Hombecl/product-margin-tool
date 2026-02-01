@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import LoginGate from '@/components/LoginGate';
-import { Calculator, Target, ArrowRight, ShoppingCart, Search } from 'lucide-react';
+import { Calculator, Target, ArrowRight, ShoppingCart, Search, ClipboardCheck } from 'lucide-react';
 
 function HomePage() {
   return (
@@ -98,6 +98,29 @@ function HomePage() {
             <div className="mt-3 flex gap-2">
               <span className="text-xs bg-purple-50 text-purple-600 px-2 py-1 rounded-full font-medium">Walmart Search</span>
               <span className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded-full font-medium">Auto-Upload</span>
+            </div>
+          </div>
+        </Link>
+
+        {/* Daily Check-up Card */}
+        <Link href="/daily-checkup" className="block">
+          <div className="bg-white rounded-xl shadow-lg border border-slate-200 p-5 hover:shadow-xl hover:border-cyan-300 transition-all group">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-12 h-12 bg-cyan-100 rounded-xl flex items-center justify-center text-cyan-600 group-hover:bg-cyan-600 group-hover:text-white transition-colors">
+                  <ClipboardCheck size={24} />
+                </div>
+                <div>
+                  <h2 className="font-bold text-lg text-slate-800">Daily Check-up</h2>
+                  <p className="text-sm text-slate-500">Top 10 competitor analysis</p>
+                </div>
+              </div>
+              <ArrowRight className="text-slate-300 group-hover:text-cyan-500 transition-colors" size={20} />
+            </div>
+            <div className="mt-3 flex gap-2">
+              <span className="text-xs bg-green-50 text-green-600 px-2 py-1 rounded-full font-medium">Winning</span>
+              <span className="text-xs bg-red-50 text-red-600 px-2 py-1 rounded-full font-medium">Losing</span>
+              <span className="text-xs bg-cyan-50 text-cyan-600 px-2 py-1 rounded-full font-medium">3P Sellers</span>
             </div>
           </div>
         </Link>
