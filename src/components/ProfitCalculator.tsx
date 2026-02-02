@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import {
   Calculator, AlertCircle, TrendingUp, TrendingDown, DollarSign,
-  CheckCircle, XCircle, AlertTriangle, ArrowRight, Settings,
+  CheckCircle, XCircle, AlertTriangle, ArrowLeft, ArrowRight, Settings,
   Save, Link as LinkIcon, Loader, RotateCcw,
   Tag, ChevronDown, ChevronUp, ShoppingBasket, Package, Globe, List
 } from 'lucide-react';
@@ -241,16 +242,26 @@ const ProfitCalculator = () => {
   };
 
   return (
-    <div className="flex justify-center items-start min-h-screen bg-slate-50 p-2 font-sans text-slate-800">
+    <div className="min-h-screen bg-slate-50 p-4 font-sans text-slate-800">
+      <div className="max-w-md mx-auto">
+        {/* Navigation Header */}
+        <div className="flex items-center justify-between mb-4">
+          <Link href="/" className="p-2 hover:bg-slate-200 rounded-lg transition-colors">
+            <ArrowLeft size={20} className="text-slate-600" />
+          </Link>
+          <Link href="/repricing" className="flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 transition-colors">
+            Repricing <ArrowRight size={16} />
+          </Link>
+        </div>
 
-      <div className="w-full max-w-md bg-white rounded-xl shadow-xl overflow-hidden border border-slate-200">
+        <div className="w-full bg-white rounded-xl shadow-xl overflow-hidden border border-slate-200">
 
-        {/* Header */}
-        <div className="bg-slate-800 px-4 py-2 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-white">
-            <Calculator size={18} />
-            <h1 className="font-bold text-base tracking-wide">Profit Scout</h1>
-          </div>
+          {/* Header */}
+          <div className="bg-slate-800 px-4 py-2 flex items-center justify-between">
+            <div className="flex items-center gap-2 text-white">
+              <Calculator size={18} />
+              <h1 className="font-bold text-base tracking-wide">Profit Scout</h1>
+            </div>
 
           <div className="flex items-center gap-3">
             {/* Platform Toggle */}
@@ -644,6 +655,7 @@ const ProfitCalculator = () => {
             </div>
           )}
         </div>
+      </div>
       </div>
     </div>
   );

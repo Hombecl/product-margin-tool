@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import {
   ArrowLeft,
+  ArrowRight,
   RefreshCw,
   ExternalLink,
   ShoppingCart,
@@ -157,14 +158,19 @@ export default function BuyingOpportunities() {
               </p>
             </div>
           </div>
-          <button
-            onClick={fetchOpportunities}
-            disabled={loading}
-            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
-          >
-            <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
-            Refresh
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={fetchOpportunities}
+              disabled={loading}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+            >
+              <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
+              Refresh
+            </button>
+            <Link href="/product-discovery" className="flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 transition-colors">
+              Discovery <ArrowRight size={16} />
+            </Link>
+          </div>
         </div>
 
         {/* Stats Cards */}

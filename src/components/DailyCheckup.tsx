@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import {
   ArrowLeft,
+  ArrowRight,
   RefreshCw,
   ExternalLink,
   Trophy,
@@ -266,6 +267,9 @@ export default function DailyCheckup() {
               )}
               {triggering ? 'Running...' : 'Run Check'}
             </button>
+            <Link href="/profit-scout" className="flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 transition-colors">
+              Scout <ArrowRight size={16} />
+            </Link>
           </div>
         </div>
 

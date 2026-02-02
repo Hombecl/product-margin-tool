@@ -4,6 +4,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import {
   ArrowLeft,
+  ArrowRight,
   Search,
   Plus,
   Check,
@@ -1024,6 +1025,9 @@ export default function ProductDiscovery() {
               <BarChart3 size={18} />
               Stats
             </button>
+            <Link href="/daily-checkup" className="flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 transition-colors">
+              Check-up <ArrowRight size={16} />
+            </Link>
           </div>
         </div>
 

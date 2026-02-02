@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import Link from 'next/link';
 import {
   Calculator, AlertCircle, TrendingDown, DollarSign,
-  CheckCircle, XCircle, AlertTriangle, ArrowRight, Settings,
+  CheckCircle, XCircle, AlertTriangle, ArrowLeft, ArrowRight, Settings,
   Save, Loader, RotateCcw, Tag, ChevronDown, ChevronUp,
   Target, TrendingUp, Users, Store, Zap
 } from 'lucide-react';
@@ -293,15 +294,26 @@ const RepricingCalculator = () => {
   const isProposedBelowCompetitive = metrics.priceSource === 'minimum';
 
   return (
-    <div className="flex justify-center items-start min-h-screen bg-slate-50 p-2 font-sans text-slate-800">
-      <div className="w-full max-w-md bg-white rounded-xl shadow-xl overflow-hidden border border-slate-200">
+    <div className="min-h-screen bg-slate-50 p-4 font-sans text-slate-800">
+      <div className="max-w-md mx-auto">
+        {/* Navigation Header */}
+        <div className="flex items-center justify-between mb-4">
+          <Link href="/" className="p-2 hover:bg-slate-200 rounded-lg transition-colors">
+            <ArrowLeft size={20} className="text-slate-600" />
+          </Link>
+          <Link href="/buying-opportunities" className="flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 transition-colors">
+            Buying Opportunities <ArrowRight size={16} />
+          </Link>
+        </div>
 
-        {/* Header */}
-        <div className="bg-emerald-700 px-4 py-2 flex items-center justify-between">
-          <div className="flex items-center gap-2 text-white">
-            <Target size={18} />
-            <h1 className="font-bold text-base tracking-wide">Repricing Calculator</h1>
-          </div>
+        <div className="w-full bg-white rounded-xl shadow-xl overflow-hidden border border-slate-200">
+
+          {/* Header */}
+          <div className="bg-emerald-700 px-4 py-2 flex items-center justify-between">
+            <div className="flex items-center gap-2 text-white">
+              <Target size={18} />
+              <h1 className="font-bold text-base tracking-wide">Repricing Calculator</h1>
+            </div>
           <div className="flex items-center gap-3">
             <button onClick={handleClear} className="text-emerald-200 hover:text-white transition-colors" title="Reset">
               <RotateCcw size={16} />
@@ -708,6 +720,7 @@ const RepricingCalculator = () => {
             </div>
           )}
         </div>
+      </div>
       </div>
     </div>
   );
