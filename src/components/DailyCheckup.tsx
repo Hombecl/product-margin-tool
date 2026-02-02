@@ -22,7 +22,9 @@ import {
   AlertTriangle,
   ShoppingCart,
   Star,
-  Link as LinkIcon
+  Link as LinkIcon,
+  Trash2,
+  Calendar
 } from 'lucide-react';
 
 interface Seller {
@@ -78,6 +80,11 @@ interface Product {
   lastCheck: string | null;
   sellers: Seller[];
   walmartUrl: string;
+  // Retire info
+  isRetired: boolean;
+  retireReason: string | null;
+  retireDate: string | null;
+  pendingRetire: boolean;
 }
 
 interface Summary {
@@ -87,6 +94,8 @@ interface Summary {
   notFound: number;
   published: number;
   unpublished: number;
+  retired: number;
+  pendingRetire: number;
   zeroInventory: number;
   totalSales3Day: number;
   totalSales7Day: number;
@@ -223,6 +232,61 @@ export default function DailyCheckup() {
       <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">
         <Package size={12} />
         {product.totalInventory}
+      </span>
+    );
+  };
+
+  const getRetireBadge = (product: Product) => {
+    if (product.isRetired) {
+      return (
+        <span
+          className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-purple-100 text-purple-700 cursor-pointer hover:bg-purple-200"
+          title={`Retired: ${product.retireReason || 'Unknown reason'}\n${product.retireDate ? formatTimeAgo(product.retireDate) : ''}`}
+        >
+          <Trash2 size={12} />
+          Retired
+        </span>
+      );
+    }
+    if (product.pendingRetire) {
+      return (
+        <span
+          className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-orange-100 text-orange-700 animate-pulse cursor-pointer"
+          title={`Pending retire: ${product.retireReason || 'Unknown reason'}`}
+        >
+          <AlertCircle size={12} />
+          Pending Retire
+        </span>
+      );
+    }
+    return null;
+  };
+
+  const getPublishBadge = (product: Product) => {
+    // Don't show publish badge if already showing retire badge
+    if (product.isRetired || product.pendingRetire) {
+      return null;
+    }
+    if (product.publishedStatus === 'PUBLISHED') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-700">
+          <CheckCircle size={12} />
+          Live
+        </span>
+      );
+    }
+    if (product.publishedStatus === 'UNPUBLISHED') {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700">
+          <XCircle size={12} />
+          Unpub
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-slate-100 text-slate-600">
+        <AlertCircle size={12} />
+        {product.publishedStatus || '?'}
       </span>
     );
   };
@@ -388,6 +452,8 @@ export default function DailyCheckup() {
                             </span>
                             {getStatusBadge(product)}
                             {getInventoryBadge(product)}
+                            {getRetireBadge(product)}
+                            {getPublishBadge(product)}
                           </div>
                           <p className="text-sm text-slate-500 mt-0.5 truncate max-w-lg">
                             {product.title}
@@ -477,13 +543,49 @@ export default function DailyCheckup() {
                             {product.totalInventory} units
                           </p>
                         </div>
-                        <div className="bg-white rounded-lg p-3 border border-slate-200">
+                        <div className={`rounded-lg p-3 border ${product.isRetired ? 'bg-purple-50 border-purple-200' : product.pendingRetire ? 'bg-orange-50 border-orange-200' : product.publishedStatus === 'PUBLISHED' ? 'bg-green-50 border-green-200' : 'bg-white border-slate-200'}`}>
                           <p className="text-xs text-slate-500 mb-1">Status</p>
-                          <p className={`font-semibold ${product.publishedStatus === 'PUBLISHED' ? 'text-green-700' : 'text-red-700'}`}>
-                            {product.publishedStatus}
+                          <p className={`font-semibold ${product.isRetired ? 'text-purple-700' : product.pendingRetire ? 'text-orange-700' : product.publishedStatus === 'PUBLISHED' ? 'text-green-700' : 'text-red-700'}`}>
+                            {product.isRetired ? 'RETIRED' : product.pendingRetire ? 'PENDING RETIRE' : product.publishedStatus}
                           </p>
                         </div>
                       </div>
+
+                      {/* Retire Info Block */}
+                      {(product.isRetired || product.pendingRetire) && (
+                        <div className={`rounded-lg p-4 mb-4 ${product.isRetired ? 'bg-purple-50 border border-purple-200' : 'bg-orange-50 border border-orange-200'}`}>
+                          <div className="flex items-center gap-2 mb-2">
+                            <Trash2 size={16} className={product.isRetired ? 'text-purple-600' : 'text-orange-600'} />
+                            <span className={`font-semibold ${product.isRetired ? 'text-purple-700' : 'text-orange-700'}`}>
+                              {product.isRetired ? 'Product Retired' : 'Pending Retirement'}
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-4 text-sm">
+                            <div>
+                              <span className="text-slate-500">Reason:</span>
+                              <span className={`ml-2 font-medium ${product.isRetired ? 'text-purple-700' : 'text-orange-700'}`}>
+                                {product.retireReason || 'Unknown'}
+                              </span>
+                            </div>
+                            {product.retireDate && (
+                              <div className="flex items-center gap-1">
+                                <Calendar size={14} className="text-slate-400" />
+                                <span className="text-slate-500">Retired:</span>
+                                <span className="ml-1 font-medium text-slate-700">
+                                  {new Date(product.retireDate).toLocaleDateString()} {new Date(product.retireDate).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                          {product.sales14Day > 0 && (
+                            <div className="mt-2 p-2 bg-red-100 rounded border border-red-200">
+                              <span className="text-red-700 text-sm font-medium">
+                                This product had {product.sales14Day} sales in the last 14 days before retirement
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      )}
 
                       {/* Product Info */}
                       {(product.brand || product.rating !== null) && (

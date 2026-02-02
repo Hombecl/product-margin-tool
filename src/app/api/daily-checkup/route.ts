@@ -41,6 +41,9 @@ interface AirtableRecord {
     // Inventory fields
     'WM Publish Status'?: string;
     'WM Inventory'?: number;
+    // Retire tracking
+    'Retire Reason'?: string;
+    'WM Last Verification'?: string;
   };
 }
 
@@ -97,6 +100,11 @@ interface DailyCheckProduct {
   lastCheck: string | null;
   sellers: Seller[];
   walmartUrl: string;
+  // Retire info
+  isRetired: boolean;
+  retireReason: string | null;
+  retireDate: string | null;
+  pendingRetire: boolean;
 }
 
 export async function GET(request: NextRequest) {
@@ -136,6 +144,9 @@ export async function GET(request: NextRequest) {
     // Inventory
     url.searchParams.append('fields[]', 'WM Publish Status');
     url.searchParams.append('fields[]', 'WM Inventory');
+    // Retire tracking
+    url.searchParams.append('fields[]', 'Retire Reason');
+    url.searchParams.append('fields[]', 'WM Last Verification');
     // Scrape data
     url.searchParams.append('fields[]', 'Scrape Current Price');
     url.searchParams.append('fields[]', 'Scrape Price');
@@ -205,12 +216,24 @@ export async function GET(request: NextRequest) {
       const totalInventory = f['WM Inventory'] || 0;
       const inventoryWarning = totalInventory === 0;
 
-      // Publish status
+      // Publish status and retire info
       const wmStatus = f['WM Publish Status'] || '';
+      const isRetired = wmStatus.toLowerCase().includes('retired');
+      const pendingRetire = !isRetired && !!f['Retire Reason'];
+
+      // Extract retire reason
+      let retireReason: string | null = f['Retire Reason'] || null;
+      if (!retireReason && isRetired) {
+        const match = wmStatus.match(/Retired\s*\(([^)]+)\)/i);
+        retireReason = match ? match[1] : 'Unknown';
+      }
+
       let publishedStatus: string;
-      if (wmStatus.includes('PUBLISHED') || wmStatus.includes('ACTIVE')) {
+      if (isRetired) {
+        publishedStatus = 'RETIRED';
+      } else if (wmStatus.includes('PUBLISHED') || wmStatus.includes('ACTIVE')) {
         publishedStatus = 'PUBLISHED';
-      } else if (wmStatus.includes('UNPUBLISHED') || wmStatus.includes('RETIRED')) {
+      } else if (wmStatus.includes('UNPUBLISHED')) {
         publishedStatus = 'UNPUBLISHED';
       } else {
         publishedStatus = wmStatus || 'Unknown';
@@ -266,12 +289,19 @@ export async function GET(request: NextRequest) {
         lastCheck: f['Daily Check Last Run'] || null,
         sellers,
         walmartUrl: f['Walmart Listing URL'] || `https://www.walmart.com/ip/${f['Product ID']}`,
+        // Retire info
+        isRetired,
+        retireReason,
+        retireDate: isRetired ? (f['WM Last Verification'] || null) : null,
+        pendingRetire,
       };
     });
 
     // Calculate summary stats
     const published = products.filter(p => p.publishedStatus === 'PUBLISHED').length;
     const unpublished = products.filter(p => p.publishedStatus === 'UNPUBLISHED').length;
+    const retired = products.filter(p => p.isRetired).length;
+    const pendingRetire = products.filter(p => p.pendingRetire).length;
     const zeroInventory = products.filter(p => p.inventoryWarning).length;
 
     const summary = {
@@ -281,6 +311,8 @@ export async function GET(request: NextRequest) {
       notFound: products.filter(p => p.ourRank === null).length,
       published,
       unpublished,
+      retired,
+      pendingRetire,
       zeroInventory,
       totalSales3Day: products.reduce((sum, p) => sum + (p.sales3Day || 0), 0),
       totalSales7Day: products.reduce((sum, p) => sum + (p.sales7Day || 0), 0),
