@@ -288,7 +288,7 @@ export async function GET(request: NextRequest) {
         supplierLink: f['Primary Supplier Link'] || null,
         lastCheck: f['Daily Check Last Run'] || null,
         sellers,
-        walmartUrl: f['Walmart Listing URL'] || (f['Product ID'] ? `https://www.walmart.com/ip/${f['Product ID']}` : ''),
+        walmartUrl: f['Walmart Listing URL'] || (f['Product ID'] ? `https://www.walmart.com/ip/${f['Product ID']}` : f['Primary Supplier Link'] || ''),
         // Retire info
         isRetired,
         retireReason,
