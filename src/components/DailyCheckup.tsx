@@ -11,12 +11,17 @@ import {
   AlertCircle,
   Clock,
   DollarSign,
+  Package,
   Users,
   CheckCircle,
   XCircle,
   Loader,
   ChevronDown,
-  ChevronUp
+  ChevronUp,
+  AlertTriangle,
+  ShoppingCart,
+  Star,
+  Link as LinkIcon
 } from 'lucide-react';
 
 interface Seller {
@@ -36,8 +41,22 @@ interface Product {
   title: string;
   store: string;
   status: string;
+  sales3Day: number;
   sales7Day: number;
   sales14Day: number;
+  // Pricing
+  productCost: number | null;
+  ourSellingPrice: number | null;
+  declaredPrice: number | null;
+  walmartPrice: number | null;
+  // Inventory
+  totalInventory: number;
+  inventoryWarning: boolean;
+  publishedStatus: string;
+  // Margin
+  marginDollar: number | null;
+  marginPercent: number | null;
+  // Competition
   ourRank: number | null;
   ourPrice: number | null;
   ourShipping: number | null;
@@ -46,6 +65,15 @@ interface Product {
   lowest3PPrice: number | null;
   priceDiff: number | null;
   totalSellers: number;
+  thirdPartySellers: number;
+  buyBoxSeller: string;
+  // Product info
+  brand: string | null;
+  rating: number | null;
+  reviewCount: number;
+  lowStockWarning: string | null;
+  // Links
+  supplierLink: string | null;
   lastCheck: string | null;
   sellers: Seller[];
   walmartUrl: string;
@@ -56,6 +84,12 @@ interface Summary {
   winning: number;
   losing: number;
   notFound: number;
+  published: number;
+  unpublished: number;
+  zeroInventory: number;
+  totalSales3Day: number;
+  totalSales7Day: number;
+  totalSales14Day: number;
   lastCheck: string | null;
 }
 
@@ -140,6 +174,16 @@ export default function DailyCheckup() {
     return date.toLocaleDateString();
   };
 
+  const formatCurrency = (value: number | null) => {
+    if (value === null) return '-';
+    return `$${value.toFixed(2)}`;
+  };
+
+  const formatPercent = (value: number | null) => {
+    if (value === null) return '-';
+    return `${(value * 100).toFixed(1)}%`;
+  };
+
   const getStatusBadge = (product: Product) => {
     if (product.ourRank === null) {
       return (
@@ -165,15 +209,38 @@ export default function DailyCheckup() {
     );
   };
 
+  const getInventoryBadge = (product: Product) => {
+    if (product.inventoryWarning) {
+      return (
+        <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-700">
+          <AlertTriangle size={12} />
+          No Stock
+        </span>
+      );
+    }
+    return (
+      <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-700">
+        <Package size={12} />
+        {product.totalInventory}
+      </span>
+    );
+  };
+
+  const getMarginColor = (marginPercent: number | null) => {
+    if (marginPercent === null) return 'text-slate-400';
+    if (marginPercent >= 0.15) return 'text-green-600';
+    if (marginPercent >= 0.10) return 'text-yellow-600';
+    return 'text-red-600';
+  };
+
   const getRankDisplay = (product: Product) => {
     if (product.ourRank === null) return '-';
-    const total3P = product.totalSellers - (product.sellers.some(s => s.name.toLowerCase().includes('walmart')) ? 1 : 0);
     return `#${product.ourRank} of ${product.totalSellers}`;
   };
 
   return (
     <div className="min-h-screen bg-slate-50 p-4 font-sans">
-      <div className="max-w-6xl mx-auto">
+      <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
@@ -204,37 +271,53 @@ export default function DailyCheckup() {
 
         {/* Summary Cards */}
         {summary && (
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-            <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-200">
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-6">
+            <div className="bg-white rounded-xl p-3 shadow-sm border border-slate-200">
               <div className="flex items-center gap-2 text-slate-500 mb-1">
-                <Users size={16} />
-                <span className="text-xs font-medium">Total Products</span>
+                <Users size={14} />
+                <span className="text-xs font-medium">Products</span>
               </div>
-              <p className="text-2xl font-bold text-slate-800">{summary.totalProducts}</p>
+              <p className="text-xl font-bold text-slate-800">{summary.totalProducts}</p>
             </div>
 
-            <div className="bg-white rounded-xl p-4 shadow-sm border border-green-200 bg-green-50">
+            <div className="bg-green-50 rounded-xl p-3 shadow-sm border border-green-200">
               <div className="flex items-center gap-2 text-green-600 mb-1">
-                <CheckCircle size={16} />
+                <CheckCircle size={14} />
                 <span className="text-xs font-medium">Winning</span>
               </div>
-              <p className="text-2xl font-bold text-green-700">{summary.winning}</p>
+              <p className="text-xl font-bold text-green-700">{summary.winning}</p>
             </div>
 
-            <div className="bg-white rounded-xl p-4 shadow-sm border border-red-200 bg-red-50">
+            <div className="bg-red-50 rounded-xl p-3 shadow-sm border border-red-200">
               <div className="flex items-center gap-2 text-red-600 mb-1">
-                <XCircle size={16} />
+                <XCircle size={14} />
                 <span className="text-xs font-medium">Losing</span>
               </div>
-              <p className="text-2xl font-bold text-red-700">{summary.losing}</p>
+              <p className="text-xl font-bold text-red-700">{summary.losing}</p>
             </div>
 
-            <div className="bg-white rounded-xl p-4 shadow-sm border border-slate-200">
+            <div className="bg-amber-50 rounded-xl p-3 shadow-sm border border-amber-200">
+              <div className="flex items-center gap-2 text-amber-600 mb-1">
+                <AlertTriangle size={14} />
+                <span className="text-xs font-medium">No Stock</span>
+              </div>
+              <p className="text-xl font-bold text-amber-700">{summary.zeroInventory}</p>
+            </div>
+
+            <div className="bg-white rounded-xl p-3 shadow-sm border border-slate-200">
               <div className="flex items-center gap-2 text-slate-500 mb-1">
-                <Clock size={16} />
+                <ShoppingCart size={14} />
+                <span className="text-xs font-medium">14D Sales</span>
+              </div>
+              <p className="text-xl font-bold text-slate-800">{summary.totalSales14Day}</p>
+            </div>
+
+            <div className="bg-white rounded-xl p-3 shadow-sm border border-slate-200">
+              <div className="flex items-center gap-2 text-slate-500 mb-1">
+                <Clock size={14} />
                 <span className="text-xs font-medium">Last Check</span>
               </div>
-              <p className="text-lg font-bold text-slate-800">{formatTimeAgo(summary.lastCheck)}</p>
+              <p className="text-sm font-bold text-slate-800">{formatTimeAgo(summary.lastCheck)}</p>
             </div>
           </div>
         )}
@@ -279,7 +362,9 @@ export default function DailyCheckup() {
               products.map((product, index) => (
                 <div
                   key={product.id}
-                  className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden"
+                  className={`bg-white rounded-xl shadow-sm border overflow-hidden ${
+                    product.inventoryWarning ? 'border-red-300' : 'border-slate-200'
+                  }`}
                 >
                   {/* Main Row */}
                   <div
@@ -292,58 +377,58 @@ export default function DailyCheckup() {
                           {index + 1}
                         </div>
                         <div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-semibold text-slate-800">{product.sku}</span>
                             <span className="text-xs px-2 py-0.5 bg-slate-100 text-slate-600 rounded">
                               {product.store}
                             </span>
                             {getStatusBadge(product)}
+                            {getInventoryBadge(product)}
                           </div>
-                          <p className="text-sm text-slate-500 mt-0.5 truncate max-w-md">
+                          <p className="text-sm text-slate-500 mt-0.5 truncate max-w-lg">
                             {product.title}
                           </p>
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-6">
-                        {/* 14-Day Sales */}
-                        <div className="text-right">
-                          <p className="text-xs text-slate-500">14D Sales</p>
-                          <p className="font-semibold text-slate-800">{product.sales14Day}</p>
-                        </div>
-
-                        {/* 7-Day Sales */}
-                        <div className="text-right">
-                          <p className="text-xs text-slate-500">7D Sales</p>
-                          <p className="font-semibold text-slate-800">{product.sales7Day}</p>
+                      <div className="flex items-center gap-4">
+                        {/* Sales */}
+                        <div className="text-right hidden md:block">
+                          <p className="text-xs text-slate-500">3D / 7D / 14D</p>
+                          <p className="font-semibold text-slate-800">
+                            {product.sales3Day} / {product.sales7Day} / {product.sales14Day}
+                          </p>
                         </div>
 
                         {/* Our Price */}
                         <div className="text-right">
                           <p className="text-xs text-slate-500">Our Price</p>
                           <p className="font-semibold text-slate-800">
-                            {product.ourTotal !== null ? `$${product.ourTotal.toFixed(2)}` : '-'}
+                            {formatCurrency(product.ourSellingPrice)}
+                          </p>
+                        </div>
+
+                        {/* Walmart Price */}
+                        <div className="text-right hidden lg:block">
+                          <p className="text-xs text-slate-500">WM Price</p>
+                          <p className="font-semibold text-slate-800">
+                            {formatCurrency(product.walmartPrice)}
+                          </p>
+                        </div>
+
+                        {/* Margin */}
+                        <div className="text-right">
+                          <p className="text-xs text-slate-500">Margin</p>
+                          <p className={`font-semibold ${getMarginColor(product.marginPercent)}`}>
+                            {formatPercent(product.marginPercent)}
                           </p>
                         </div>
 
                         {/* Rank */}
-                        <div className="text-right">
+                        <div className="text-right hidden md:block">
                           <p className="text-xs text-slate-500">Rank</p>
                           <p className={`font-semibold ${product.isWinning ? 'text-green-600' : product.ourRank !== null ? 'text-red-600' : 'text-slate-400'}`}>
                             {getRankDisplay(product)}
-                          </p>
-                        </div>
-
-                        {/* Price Diff */}
-                        <div className="text-right w-20">
-                          <p className="text-xs text-slate-500">vs Lowest</p>
-                          <p className={`font-semibold ${
-                            product.priceDiff === null ? 'text-slate-400' :
-                            product.priceDiff <= 0 ? 'text-green-600' : 'text-red-600'
-                          }`}>
-                            {product.priceDiff !== null
-                              ? `${product.priceDiff > 0 ? '+' : ''}$${product.priceDiff.toFixed(2)}`
-                              : '-'}
                           </p>
                         </div>
 
@@ -362,16 +447,87 @@ export default function DailyCheckup() {
                   {/* Expanded Details */}
                   {expandedProduct === product.id && (
                     <div className="border-t border-slate-200 bg-slate-50 p-4">
-                      <div className="flex items-center justify-between mb-3">
-                        <h4 className="font-medium text-slate-700">All Sellers ({product.totalSellers})</h4>
+                      {/* Info Grid */}
+                      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 mb-4">
+                        <div className="bg-white rounded-lg p-3 border border-slate-200">
+                          <p className="text-xs text-slate-500 mb-1">Product Cost</p>
+                          <p className="font-semibold text-slate-800">{formatCurrency(product.productCost)}</p>
+                        </div>
+                        <div className="bg-white rounded-lg p-3 border border-slate-200">
+                          <p className="text-xs text-slate-500 mb-1">Our Selling Price</p>
+                          <p className="font-semibold text-slate-800">{formatCurrency(product.ourSellingPrice)}</p>
+                        </div>
+                        <div className="bg-white rounded-lg p-3 border border-slate-200">
+                          <p className="text-xs text-slate-500 mb-1">Walmart Price</p>
+                          <p className="font-semibold text-slate-800">{formatCurrency(product.walmartPrice)}</p>
+                        </div>
+                        <div className={`rounded-lg p-3 border ${product.marginPercent && product.marginPercent >= 0.10 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+                          <p className="text-xs text-slate-500 mb-1">Margin ($)</p>
+                          <p className={`font-semibold ${getMarginColor(product.marginPercent)}`}>
+                            {formatCurrency(product.marginDollar)} ({formatPercent(product.marginPercent)})
+                          </p>
+                        </div>
+                        <div className={`rounded-lg p-3 border ${product.inventoryWarning ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'}`}>
+                          <p className="text-xs text-slate-500 mb-1">Inventory</p>
+                          <p className={`font-semibold ${product.inventoryWarning ? 'text-red-700' : 'text-green-700'}`}>
+                            {product.totalInventory} units
+                          </p>
+                        </div>
+                        <div className="bg-white rounded-lg p-3 border border-slate-200">
+                          <p className="text-xs text-slate-500 mb-1">Status</p>
+                          <p className={`font-semibold ${product.publishedStatus === 'PUBLISHED' ? 'text-green-700' : 'text-red-700'}`}>
+                            {product.publishedStatus}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Product Info */}
+                      {(product.brand || product.rating !== null) && (
+                        <div className="flex items-center gap-4 mb-4 text-sm">
+                          {product.brand && (
+                            <span className="text-slate-600">Brand: <strong>{product.brand}</strong></span>
+                          )}
+                          {product.rating !== null && (
+                            <span className="flex items-center gap-1 text-slate-600">
+                              <Star size={14} className="text-yellow-500 fill-yellow-500" />
+                              {product.rating.toFixed(1)} ({product.reviewCount} reviews)
+                            </span>
+                          )}
+                          {product.buyBoxSeller && (
+                            <span className="text-slate-600">Buy Box: <strong>{product.buyBoxSeller}</strong></span>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Links */}
+                      <div className="flex items-center gap-4 mb-4">
                         <a
                           href={product.walmartUrl}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="flex items-center gap-1 text-blue-600 hover:text-blue-700 text-sm"
                         >
-                          View on Walmart <ExternalLink size={14} />
+                          <ExternalLink size={14} />
+                          View on Walmart
                         </a>
+                        {product.supplierLink && (
+                          <a
+                            href={product.supplierLink}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center gap-1 text-blue-600 hover:text-blue-700 text-sm"
+                          >
+                            <LinkIcon size={14} />
+                            Supplier Link
+                          </a>
+                        )}
+                      </div>
+
+                      {/* Sellers Section */}
+                      <div className="mb-3">
+                        <h4 className="font-medium text-slate-700 mb-2">
+                          All Sellers ({product.totalSellers}) - {product.thirdPartySellers} 3P Sellers
+                        </h4>
                       </div>
 
                       {product.sellers.length > 0 ? (
