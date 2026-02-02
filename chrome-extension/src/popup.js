@@ -21,6 +21,10 @@ let validationFlags = {
   tooMuchCompetition: false
 };
 
+// Auto-navigation queue (stored in chrome.storage)
+let navigationQueue = [];
+let isAutoNavigating = false;
+
 // ═══════════════════════════════════════════════════════════════════
 // INITIALIZATION
 // ═══════════════════════════════════════════════════════════════════
@@ -173,6 +177,19 @@ function renderProductData(data) {
       </div>
     </div>
 
+    <!-- Seller Data Source Indicator -->
+    ${data.sellersSource ? `
+    <div class="data-source ${data.sellersSource === 'MODAL' ? 'from-modal' : ''}">
+      ${data.sellersSource === 'MODAL' ? '✓ Seller data captured from Compare All Sellers modal' :
+        data.sellersSource === 'STORAGE' ? '📦 Using previously captured modal data' :
+        '⚡ Seller data from page (click "Compare All Sellers" for more)'}
+    </div>
+    ` : `
+    <div class="data-source">
+      💡 Click "Compare All Sellers" on the product page for complete seller data
+    </div>
+    `}
+
     <!-- Actions -->
     <div class="actions">
       <button class="btn btn-primary" id="sendToCalculatorBtn">
@@ -181,6 +198,24 @@ function renderProductData(data) {
       <button class="btn btn-secondary" id="copyDataBtn">
         📋 Copy Seller Data
       </button>
+    </div>
+
+    <!-- Auto Navigation Section -->
+    <div class="nav-section">
+      <div class="nav-header">Auto Navigation</div>
+      <div class="nav-row">
+        <button class="btn btn-nav" id="addToQueueBtn" title="Add current product to queue">
+          ➕ Add to Queue
+        </button>
+        <button class="btn btn-nav" id="nextProductBtn" title="Navigate to next product in queue">
+          ⏭️ Next Product
+        </button>
+      </div>
+      <div class="nav-row">
+        <input type="text" class="nav-input" id="navUrlInput" placeholder="Paste Walmart URL or product ID...">
+        <button class="btn btn-nav" id="goToUrlBtn">Go</button>
+      </div>
+      <div class="queue-info" id="queueInfo">Queue: 0 products</div>
     </div>
 
     <div class="footer">
@@ -256,6 +291,31 @@ function attachEventListeners() {
   document.getElementById('copyDataBtn')?.addEventListener('click', () => {
     copySellerData();
   });
+
+  // Auto Navigation - Add to Queue
+  document.getElementById('addToQueueBtn')?.addEventListener('click', () => {
+    addCurrentToQueue();
+  });
+
+  // Auto Navigation - Next Product
+  document.getElementById('nextProductBtn')?.addEventListener('click', () => {
+    navigateToNextProduct();
+  });
+
+  // Auto Navigation - Go to URL
+  document.getElementById('goToUrlBtn')?.addEventListener('click', () => {
+    goToInputUrl();
+  });
+
+  // Enter key on URL input
+  document.getElementById('navUrlInput')?.addEventListener('keypress', (e) => {
+    if (e.key === 'Enter') {
+      goToInputUrl();
+    }
+  });
+
+  // Load and display queue info
+  loadQueueInfo();
 }
 
 function checkCompetition() {
@@ -336,6 +396,119 @@ Validation Flags:
       btn.innerHTML = originalText;
     }, 2000);
   });
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// AUTO NAVIGATION FUNCTIONS
+// ═══════════════════════════════════════════════════════════════════
+
+async function loadQueueInfo() {
+  try {
+    const result = await chrome.storage.local.get(['navigationQueue']);
+    navigationQueue = result.navigationQueue || [];
+    updateQueueDisplay();
+  } catch (e) {
+    console.error('Error loading queue:', e);
+  }
+}
+
+function updateQueueDisplay() {
+  const queueInfo = document.getElementById('queueInfo');
+  if (queueInfo) {
+    queueInfo.textContent = `Queue: ${navigationQueue.length} product${navigationQueue.length !== 1 ? 's' : ''}`;
+  }
+}
+
+async function addCurrentToQueue() {
+  if (!productData) return;
+
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  const queueItem = {
+    url: tab.url,
+    productId: productData.productId,
+    title: productData.title,
+    addedAt: new Date().toISOString()
+  };
+
+  // Check if already in queue
+  if (navigationQueue.some(item => item.productId === queueItem.productId)) {
+    showButtonFeedback('addToQueueBtn', '⚠️ Already in queue', 2000);
+    return;
+  }
+
+  navigationQueue.push(queueItem);
+  await chrome.storage.local.set({ navigationQueue });
+  updateQueueDisplay();
+  showButtonFeedback('addToQueueBtn', '✅ Added!', 1500);
+}
+
+async function navigateToNextProduct() {
+  await loadQueueInfo();
+
+  if (navigationQueue.length === 0) {
+    showButtonFeedback('nextProductBtn', '📭 Queue empty', 2000);
+    return;
+  }
+
+  // Get next product and remove from queue
+  const nextProduct = navigationQueue.shift();
+  await chrome.storage.local.set({ navigationQueue });
+
+  // Navigate current tab to the next product
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  await chrome.tabs.update(tab.id, { url: nextProduct.url });
+
+  // Close popup (navigation will reload the page)
+  window.close();
+}
+
+async function goToInputUrl() {
+  const input = document.getElementById('navUrlInput');
+  let urlOrId = input?.value?.trim();
+
+  if (!urlOrId) return;
+
+  let targetUrl = '';
+
+  // Check if it's a product ID (just numbers)
+  if (/^\d+$/.test(urlOrId)) {
+    targetUrl = `https://www.walmart.com/ip/${urlOrId}`;
+  }
+  // Check if it's a full Walmart URL
+  else if (urlOrId.includes('walmart.com')) {
+    // Ensure it starts with https
+    if (!urlOrId.startsWith('http')) {
+      urlOrId = 'https://' + urlOrId;
+    }
+    targetUrl = urlOrId;
+  }
+  // Check if it's a partial path
+  else if (urlOrId.startsWith('/ip/')) {
+    targetUrl = 'https://www.walmart.com' + urlOrId;
+  }
+  else {
+    showButtonFeedback('goToUrlBtn', '❌ Invalid', 2000);
+    return;
+  }
+
+  // Navigate current tab
+  const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+  await chrome.tabs.update(tab.id, { url: targetUrl });
+  window.close();
+}
+
+function showButtonFeedback(buttonId, message, duration) {
+  const btn = document.getElementById(buttonId);
+  if (!btn) return;
+
+  const originalText = btn.innerHTML;
+  btn.innerHTML = message;
+  btn.disabled = true;
+
+  setTimeout(() => {
+    btn.innerHTML = originalText;
+    btn.disabled = false;
+  }, duration);
 }
 
 // ═══════════════════════════════════════════════════════════════════
