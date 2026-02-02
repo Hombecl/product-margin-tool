@@ -22,8 +22,8 @@ import {
 interface Seller {
   name: string;
   price: number;
-  shipping: number;
-  freeShipping: boolean;
+  shipping?: number;
+  freeShipping?: boolean;
   total: number;
   isOurs: boolean;
   rank: number;
@@ -414,7 +414,7 @@ export default function DailyCheckup() {
                                 <div className="text-right">
                                   <span className="text-slate-500">Ship:</span>
                                   <span className={`ml-1 font-medium ${seller.freeShipping ? 'text-green-600' : ''}`}>
-                                    {seller.freeShipping ? 'FREE' : `$${seller.shipping.toFixed(2)}`}
+                                    {seller.freeShipping ? 'FREE' : seller.shipping != null ? `$${seller.shipping.toFixed(2)}` : '-'}
                                   </span>
                                 </div>
                                 <div className="text-right font-bold text-slate-800">
