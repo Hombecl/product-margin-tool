@@ -12,6 +12,7 @@ interface AirtableRecord {
     Store?: string;
     Status?: string;
     '7-Day Sales'?: number;
+    '14-Day Sales'?: number;
     'Daily Check Our Rank'?: number;
     'Daily Check Our Price'?: number;
     'Daily Check Our Shipping'?: number;
@@ -44,6 +45,7 @@ interface DailyCheckProduct {
   store: string;
   status: string;
   sales7Day: number;
+  sales14Day: number;
   ourRank: number | null;
   ourPrice: number | null;
   ourShipping: number | null;
@@ -60,19 +62,19 @@ interface DailyCheckProduct {
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
-    const limit = parseInt(searchParams.get('limit') || '10');
+    const limit = parseInt(searchParams.get('limit') || '15');
     const store = searchParams.get('store'); // WM19 or WM24 or all
 
-    // Build filter formula
-    let filterFormula = "AND({Status}='Active', {7-Day Sales}>0)";
+    // Build filter formula - use 14-Day Sales for sorting
+    let filterFormula = "AND({14-Day Sales}>0, OR({Store}='WM19', {Store}='WM24'))";
     if (store && store !== 'all') {
-      filterFormula = `AND({Status}='Active', {7-Day Sales}>0, {Store}='${store}')`;
+      filterFormula = `AND({14-Day Sales}>0, {Store}='${store}')`;
     }
 
     // Fetch from Airtable
     const url = new URL(`https://api.airtable.com/v0/${BASE_ID}/${TABLE_ID}`);
     url.searchParams.set('filterByFormula', filterFormula);
-    url.searchParams.set('sort[0][field]', '7-Day Sales');
+    url.searchParams.set('sort[0][field]', '14-Day Sales');
     url.searchParams.set('sort[0][direction]', 'desc');
     url.searchParams.set('maxRecords', limit.toString());
     url.searchParams.set('fields[]', 'SKU');
@@ -80,6 +82,7 @@ export async function GET(request: NextRequest) {
     url.searchParams.append('fields[]', 'Store');
     url.searchParams.append('fields[]', 'Status');
     url.searchParams.append('fields[]', '7-Day Sales');
+    url.searchParams.append('fields[]', '14-Day Sales');
     url.searchParams.append('fields[]', 'Daily Check Our Rank');
     url.searchParams.append('fields[]', 'Daily Check Our Price');
     url.searchParams.append('fields[]', 'Daily Check Our Shipping');
@@ -133,6 +136,7 @@ export async function GET(request: NextRequest) {
         store: f.Store || 'Unknown',
         status: f.Status || 'Unknown',
         sales7Day: f['7-Day Sales'] || 0,
+        sales14Day: f['14-Day Sales'] || 0,
         ourRank: f['Daily Check Our Rank'] || null,
         ourPrice: f['Daily Check Our Price'] || null,
         ourShipping: f['Daily Check Our Shipping'] || null,

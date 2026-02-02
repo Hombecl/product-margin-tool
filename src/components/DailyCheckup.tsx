@@ -37,6 +37,7 @@ interface Product {
   store: string;
   status: string;
   sales7Day: number;
+  sales14Day: number;
   ourRank: number | null;
   ourPrice: number | null;
   ourShipping: number | null;
@@ -78,7 +79,7 @@ export default function DailyCheckup() {
 
     try {
       const params = new URLSearchParams();
-      params.set('limit', '10');
+      params.set('limit', '15');
       if (storeFilter !== 'all') {
         params.set('store', storeFilter);
       }
@@ -181,7 +182,7 @@ export default function DailyCheckup() {
             </Link>
             <div>
               <h1 className="text-xl font-bold text-slate-800">Daily Check-up</h1>
-              <p className="text-sm text-slate-500">Top 10 products competitor analysis</p>
+              <p className="text-sm text-slate-500">Top 15 products by 14-Day Sales</p>
             </div>
           </div>
 
@@ -305,6 +306,12 @@ export default function DailyCheckup() {
                       </div>
 
                       <div className="flex items-center gap-6">
+                        {/* 14-Day Sales */}
+                        <div className="text-right">
+                          <p className="text-xs text-slate-500">14D Sales</p>
+                          <p className="font-semibold text-slate-800">{product.sales14Day}</p>
+                        </div>
+
                         {/* 7-Day Sales */}
                         <div className="text-right">
                           <p className="text-xs text-slate-500">7D Sales</p>
