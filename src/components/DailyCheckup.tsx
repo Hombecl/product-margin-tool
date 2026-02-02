@@ -503,16 +503,18 @@ export default function DailyCheckup() {
                         </div>
 
                         {/* Walmart Link */}
-                        <a
-                          href={product.walmartUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          onClick={(e) => e.stopPropagation()}
-                          className="p-2 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
-                          title="View on Walmart"
-                        >
-                          <ExternalLink size={18} />
-                        </a>
+                        {product.walmartUrl && (
+                          <a
+                            href={product.walmartUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={(e) => e.stopPropagation()}
+                            className="p-2 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
+                            title="View on Walmart"
+                          >
+                            <ExternalLink size={18} />
+                          </a>
+                        )}
 
                         {/* Expand Icon */}
                         <div className="text-slate-400">
