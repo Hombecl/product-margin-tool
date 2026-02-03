@@ -41,6 +41,8 @@ interface AirtableRecord {
     // Inventory fields
     'WM Publish Status'?: string;
     'WM Inventory'?: number;
+    'WM FC Inventory'?: number;
+    'WM Default Inventory'?: number;
     // Retire tracking
     'Retire Reason'?: string;
     'WM Last Verification'?: string;
@@ -74,6 +76,8 @@ interface DailyCheckProduct {
   walmartPrice: number | null;
   // Inventory
   totalInventory: number;
+  fcInventory: number;
+  defaultInventory: number;
   inventoryWarning: boolean;
   publishedStatus: string;
   // Margin
@@ -144,6 +148,8 @@ export async function GET(request: NextRequest) {
     // Inventory
     url.searchParams.append('fields[]', 'WM Publish Status');
     url.searchParams.append('fields[]', 'WM Inventory');
+    url.searchParams.append('fields[]', 'WM FC Inventory');
+    url.searchParams.append('fields[]', 'WM Default Inventory');
     // Retire tracking
     url.searchParams.append('fields[]', 'Retire Reason');
     url.searchParams.append('fields[]', 'WM Last Verification');
@@ -212,8 +218,10 @@ export async function GET(request: NextRequest) {
         marginPercent = marginDollar / ourSellingPrice;
       }
 
-      // Inventory
-      const totalInventory = f['WM Inventory'] || 0;
+      // Inventory - use new separate fields if available, fallback to combined WM Inventory
+      const fcInventory = f['WM FC Inventory'] || 0;
+      const defaultInventory = f['WM Default Inventory'] || 0;
+      const totalInventory = (fcInventory + defaultInventory) || f['WM Inventory'] || 0;
       const inventoryWarning = totalInventory === 0;
 
       // Publish status and retire info
@@ -263,6 +271,8 @@ export async function GET(request: NextRequest) {
         walmartPrice,
         // Inventory
         totalInventory,
+        fcInventory,
+        defaultInventory,
         inventoryWarning,
         publishedStatus,
         // Margin

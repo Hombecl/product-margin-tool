@@ -24,7 +24,10 @@ import {
   Star,
   Link as LinkIcon,
   Trash2,
-  Calendar
+  Calendar,
+  Square,
+  CheckSquare,
+  X
 } from 'lucide-react';
 
 interface Seller {
@@ -54,6 +57,8 @@ interface Product {
   walmartPrice: number | null;
   // Inventory
   totalInventory: number;
+  fcInventory: number;
+  defaultInventory: number;
   inventoryWarning: boolean;
   publishedStatus: string;
   // Margin
@@ -108,6 +113,14 @@ const STORE_NAMES: Record<string, string> = {
   WM24: 'zhangbinhai'
 };
 
+const RETIRE_REASONS = [
+  'Manual - No Sales',
+  'Manual - Bad Category',
+  'Manual - Low Margin',
+  'Manual - Too Much Competition',
+  'Manual - Other'
+] as const;
+
 export default function DailyCheckup() {
   const [products, setProducts] = useState<Product[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
@@ -116,6 +129,13 @@ export default function DailyCheckup() {
   const [triggering, setTriggering] = useState(false);
   const [storeFilter, setStoreFilter] = useState<'all' | 'WM19' | 'WM24'>('all');
   const [expandedProduct, setExpandedProduct] = useState<string | null>(null);
+
+  // Retire selection state
+  const [selectedSkus, setSelectedSkus] = useState<Set<string>>(new Set());
+  const [showRetireModal, setShowRetireModal] = useState(false);
+  const [selectedRetireReason, setSelectedRetireReason] = useState<string>(RETIRE_REASONS[0]);
+  const [retireLoading, setRetireLoading] = useState(false);
+  const [retireResult, setRetireResult] = useState<{ success: number; failed: number } | null>(null);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
@@ -303,6 +323,79 @@ export default function DailyCheckup() {
     return `#${product.ourRank} of ${product.totalSellers}`;
   };
 
+  // Retire selection functions
+  const toggleSkuSelection = (sku: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setSelectedSkus(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(sku)) {
+        newSet.delete(sku);
+      } else {
+        newSet.add(sku);
+      }
+      return newSet;
+    });
+  };
+
+  const selectAllVisible = () => {
+    const allSkus = products
+      .filter(p => !p.isRetired && !p.pendingRetire)
+      .map(p => p.sku);
+    setSelectedSkus(new Set(allSkus));
+  };
+
+  const clearSelection = () => {
+    setSelectedSkus(new Set());
+  };
+
+  const handleRetireSubmit = async () => {
+    if (selectedSkus.size === 0) return;
+
+    setRetireLoading(true);
+    setRetireResult(null);
+
+    try {
+      const response = await fetch('/api/retire', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          skus: Array.from(selectedSkus),
+          retireReason: selectedRetireReason
+        })
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setRetireResult({
+          success: data.summary.success,
+          failed: data.summary.failed
+        });
+
+        // Update local state to show pending retire
+        setProducts(prev => prev.map(p => {
+          if (selectedSkus.has(p.sku)) {
+            return { ...p, pendingRetire: true, retireReason: selectedRetireReason };
+          }
+          return p;
+        }));
+
+        // Clear selection after success
+        setTimeout(() => {
+          setSelectedSkus(new Set());
+          setShowRetireModal(false);
+          setRetireResult(null);
+        }, 2000);
+      } else {
+        alert(data.error || 'Failed to mark products for retire');
+      }
+    } catch (err) {
+      alert('Network error: ' + String(err));
+    } finally {
+      setRetireLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 p-4 font-sans">
       <div className="max-w-7xl mx-auto">
@@ -407,6 +500,118 @@ export default function DailyCheckup() {
           ))}
         </div>
 
+        {/* Selection Bar */}
+        {products.length > 0 && (
+          <div className="flex items-center justify-between bg-white rounded-xl p-3 mb-4 shadow-sm border border-slate-200">
+            <div className="flex items-center gap-3">
+              <button
+                onClick={selectedSkus.size === products.filter(p => !p.isRetired && !p.pendingRetire).length ? clearSelection : selectAllVisible}
+                className="flex items-center gap-2 px-3 py-1.5 text-sm text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                {selectedSkus.size === products.filter(p => !p.isRetired && !p.pendingRetire).length ? (
+                  <><CheckSquare size={16} className="text-blue-600" /> Deselect All</>
+                ) : (
+                  <><Square size={16} /> Select All</>
+                )}
+              </button>
+              {selectedSkus.size > 0 && (
+                <span className="text-sm text-slate-500">
+                  {selectedSkus.size} selected
+                </span>
+              )}
+            </div>
+
+            {selectedSkus.size > 0 && (
+              <button
+                onClick={() => setShowRetireModal(true)}
+                className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium text-sm"
+              >
+                <Trash2 size={16} />
+                Send to Retire ({selectedSkus.size})
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Retire Modal */}
+        {showRetireModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-xl shadow-xl max-w-md w-full mx-4 overflow-hidden">
+              <div className="flex items-center justify-between px-4 py-3 bg-red-600 text-white">
+                <h3 className="font-bold">Send to Retire</h3>
+                <button onClick={() => setShowRetireModal(false)} className="hover:bg-red-700 p-1 rounded">
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="p-4">
+                <p className="text-sm text-slate-600 mb-4">
+                  You are about to mark <strong>{selectedSkus.size}</strong> product(s) for retirement.
+                  The retire workflow will process them automatically.
+                </p>
+
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    Select Retire Reason
+                  </label>
+                  <select
+                    value={selectedRetireReason}
+                    onChange={(e) => setSelectedRetireReason(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-red-500 focus:border-red-500"
+                  >
+                    {RETIRE_REASONS.map((reason) => (
+                      <option key={reason} value={reason}>{reason}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="bg-slate-50 rounded-lg p-3 mb-4 max-h-40 overflow-y-auto">
+                  <p className="text-xs text-slate-500 mb-2">SKUs to retire:</p>
+                  <div className="flex flex-wrap gap-1">
+                    {Array.from(selectedSkus).map((sku) => (
+                      <span key={sku} className="text-xs bg-slate-200 text-slate-700 px-2 py-1 rounded">
+                        {sku}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                {retireResult && (
+                  <div className={`p-3 rounded-lg mb-4 ${retireResult.failed > 0 ? 'bg-yellow-50 border border-yellow-200' : 'bg-green-50 border border-green-200'}`}>
+                    <p className={`text-sm font-medium ${retireResult.failed > 0 ? 'text-yellow-700' : 'text-green-700'}`}>
+                      {retireResult.success} marked for retire
+                      {retireResult.failed > 0 && `, ${retireResult.failed} failed`}
+                    </p>
+                  </div>
+                )}
+
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => setShowRetireModal(false)}
+                    disabled={retireLoading}
+                    className="flex-1 px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors font-medium"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleRetireSubmit}
+                    disabled={retireLoading || retireResult !== null}
+                    className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors font-medium disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {retireLoading ? (
+                      <><Loader size={16} className="animate-spin" /> Processing...</>
+                    ) : retireResult ? (
+                      <><CheckCircle size={16} /> Done</>
+                    ) : (
+                      <>Confirm Retire</>
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Error State */}
         {error && (
           <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-4">
@@ -441,6 +646,19 @@ export default function DailyCheckup() {
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-4">
+                        {/* Checkbox for selection */}
+                        {!product.isRetired && !product.pendingRetire && (
+                          <button
+                            onClick={(e) => toggleSkuSelection(product.sku, e)}
+                            className={`w-6 h-6 rounded border-2 flex items-center justify-center transition-colors ${
+                              selectedSkus.has(product.sku)
+                                ? 'bg-blue-600 border-blue-600 text-white'
+                                : 'border-slate-300 hover:border-blue-400'
+                            }`}
+                          >
+                            {selectedSkus.has(product.sku) && <CheckCircle size={14} />}
+                          </button>
+                        )}
                         <div className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center text-sm font-bold text-slate-500">
                           {index + 1}
                         </div>
@@ -554,7 +772,10 @@ export default function DailyCheckup() {
                         <div className={`rounded-lg p-3 border ${product.inventoryWarning ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'}`}>
                           <p className="text-xs text-slate-500 mb-1">Inventory</p>
                           <p className={`font-semibold ${product.inventoryWarning ? 'text-red-700' : 'text-green-700'}`}>
-                            {product.totalInventory} units
+                            {product.totalInventory} total
+                          </p>
+                          <p className="text-xs text-slate-500 mt-1">
+                            FC: {product.fcInventory} | Default: {product.defaultInventory}
                           </p>
                         </div>
                         <div className={`rounded-lg p-3 border ${product.isRetired ? 'bg-purple-50 border-purple-200' : product.pendingRetire ? 'bg-orange-50 border-orange-200' : product.publishedStatus === 'PUBLISHED' ? 'bg-green-50 border-green-200' : 'bg-white border-slate-200'}`}>
