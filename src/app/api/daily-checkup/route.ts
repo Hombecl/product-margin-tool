@@ -111,24 +111,57 @@ interface DailyCheckProduct {
   pendingRetire: boolean;
 }
 
+// Grouped product by Product ID - aggregates data from multiple stores
+interface ProductGroup {
+  productId: string;
+  title: string;
+  walmartUrl: string;
+  // Aggregated sales across all stores
+  totalSales3Day: number;
+  totalSales7Day: number;
+  totalSales14Day: number;
+  // Shared competition data (same listing)
+  totalSellers: number;
+  thirdPartySellers: number;
+  buyBoxSeller: string;
+  lowest3PPrice: number | null;
+  sellers: Seller[];
+  // Product info (shared)
+  brand: string | null;
+  rating: number | null;
+  reviewCount: number;
+  // Status flags (any store)
+  hasInventoryWarning: boolean;
+  hasWinningStore: boolean;
+  // Store-specific products
+  storeProducts: DailyCheckProduct[];
+  // For sorting
+  lastCheck: string | null;
+}
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const limit = parseInt(searchParams.get('limit') || '15');
     const store = searchParams.get('store'); // WM19 or WM24 or all
+    const grouped = searchParams.get('grouped') !== 'false'; // Default to grouped view
 
     // Build filter formula - use 14-Day Sales for sorting
+    // Fetch more records when grouping to ensure we get enough unique Product IDs
     let filterFormula = "AND({14-Day Sales}>0, OR({Store}='WM19', {Store}='WM24'))";
     if (store && store !== 'all') {
       filterFormula = `AND({14-Day Sales}>0, {Store}='${store}')`;
     }
+
+    // When grouping, fetch more records to ensure enough unique Product IDs
+    const fetchLimit = grouped && store === 'all' ? Math.max(limit * 3, 50) : limit;
 
     // Fetch from Airtable
     const url = new URL(`https://api.airtable.com/v0/${BASE_ID}/${TABLE_ID}`);
     url.searchParams.set('filterByFormula', filterFormula);
     url.searchParams.set('sort[0][field]', '14-Day Sales');
     url.searchParams.set('sort[0][direction]', 'desc');
-    url.searchParams.set('maxRecords', limit.toString());
+    url.searchParams.set('maxRecords', fetchLimit.toString());
     // Basic product info
     url.searchParams.set('fields[]', 'SKU');
     url.searchParams.append('fields[]', 'Product ID');
@@ -307,33 +340,131 @@ export async function GET(request: NextRequest) {
       };
     });
 
+    // Group products by Product ID if grouped mode is enabled
+    if (grouped) {
+      const groupMap = new Map<string, DailyCheckProduct[]>();
+
+      // Group all products by Product ID
+      for (const product of products) {
+        const key = product.productId || product.sku; // Fallback to SKU if no Product ID
+        if (!groupMap.has(key)) {
+          groupMap.set(key, []);
+        }
+        groupMap.get(key)!.push(product);
+      }
+
+      // Create ProductGroup objects
+      const productGroups: ProductGroup[] = [];
+      for (const [productId, storeProducts] of groupMap.entries()) {
+        // Use the first product for shared data (they're same listing)
+        const firstProduct = storeProducts[0];
+
+        // Aggregate sales across all stores
+        const totalSales3Day = storeProducts.reduce((sum, p) => sum + p.sales3Day, 0);
+        const totalSales7Day = storeProducts.reduce((sum, p) => sum + p.sales7Day, 0);
+        const totalSales14Day = storeProducts.reduce((sum, p) => sum + p.sales14Day, 0);
+
+        // Check status flags
+        const hasInventoryWarning = storeProducts.some(p => p.inventoryWarning);
+        const hasWinningStore = storeProducts.some(p => p.isWinning);
+
+        // Get most recent lastCheck
+        const lastCheck = storeProducts
+          .map(p => p.lastCheck)
+          .filter(Boolean)
+          .sort()
+          .reverse()[0] || null;
+
+        productGroups.push({
+          productId,
+          title: firstProduct.title,
+          walmartUrl: firstProduct.walmartUrl,
+          totalSales3Day,
+          totalSales7Day,
+          totalSales14Day,
+          totalSellers: firstProduct.totalSellers,
+          thirdPartySellers: firstProduct.thirdPartySellers,
+          buyBoxSeller: firstProduct.buyBoxSeller,
+          lowest3PPrice: firstProduct.lowest3PPrice,
+          sellers: firstProduct.sellers,
+          brand: firstProduct.brand,
+          rating: firstProduct.rating,
+          reviewCount: firstProduct.reviewCount,
+          hasInventoryWarning,
+          hasWinningStore,
+          storeProducts: storeProducts.sort((a, b) => a.store.localeCompare(b.store)),
+          lastCheck,
+        });
+      }
+
+      // Sort groups by total 14-day sales and limit
+      productGroups.sort((a, b) => b.totalSales14Day - a.totalSales14Day);
+      const limitedGroups = productGroups.slice(0, limit);
+
+      // Calculate summary for grouped view
+      const allProductsInGroups = limitedGroups.flatMap(g => g.storeProducts);
+      const published = allProductsInGroups.filter(p => p.publishedStatus === 'PUBLISHED').length;
+      const unpublished = allProductsInGroups.filter(p => p.publishedStatus === 'UNPUBLISHED').length;
+      const retired = allProductsInGroups.filter(p => p.isRetired).length;
+      const pendingRetire = allProductsInGroups.filter(p => p.pendingRetire).length;
+      const zeroInventory = allProductsInGroups.filter(p => p.inventoryWarning).length;
+
+      const summary = {
+        totalGroups: limitedGroups.length,
+        totalProducts: allProductsInGroups.length,
+        winning: limitedGroups.filter(g => g.hasWinningStore).length,
+        losing: limitedGroups.filter(g => !g.hasWinningStore && g.storeProducts.some(p => p.ourRank !== null)).length,
+        notFound: limitedGroups.filter(g => g.storeProducts.every(p => p.ourRank === null)).length,
+        published,
+        unpublished,
+        retired,
+        pendingRetire,
+        zeroInventory,
+        totalSales3Day: limitedGroups.reduce((sum, g) => sum + g.totalSales3Day, 0),
+        totalSales7Day: limitedGroups.reduce((sum, g) => sum + g.totalSales7Day, 0),
+        totalSales14Day: limitedGroups.reduce((sum, g) => sum + g.totalSales14Day, 0),
+        lastCheck: limitedGroups[0]?.lastCheck || null,
+      };
+
+      return NextResponse.json({
+        success: true,
+        grouped: true,
+        summary,
+        productGroups: limitedGroups,
+      });
+    }
+
+    // Non-grouped mode (legacy)
+    const limitedProducts = products.slice(0, limit);
+
     // Calculate summary stats
-    const published = products.filter(p => p.publishedStatus === 'PUBLISHED').length;
-    const unpublished = products.filter(p => p.publishedStatus === 'UNPUBLISHED').length;
-    const retired = products.filter(p => p.isRetired).length;
-    const pendingRetire = products.filter(p => p.pendingRetire).length;
-    const zeroInventory = products.filter(p => p.inventoryWarning).length;
+    const published = limitedProducts.filter(p => p.publishedStatus === 'PUBLISHED').length;
+    const unpublished = limitedProducts.filter(p => p.publishedStatus === 'UNPUBLISHED').length;
+    const retired = limitedProducts.filter(p => p.isRetired).length;
+    const pendingRetire = limitedProducts.filter(p => p.pendingRetire).length;
+    const zeroInventory = limitedProducts.filter(p => p.inventoryWarning).length;
 
     const summary = {
-      totalProducts: products.length,
-      winning: products.filter(p => p.isWinning).length,
-      losing: products.filter(p => !p.isWinning && p.ourRank !== null).length,
-      notFound: products.filter(p => p.ourRank === null).length,
+      totalProducts: limitedProducts.length,
+      winning: limitedProducts.filter(p => p.isWinning).length,
+      losing: limitedProducts.filter(p => !p.isWinning && p.ourRank !== null).length,
+      notFound: limitedProducts.filter(p => p.ourRank === null).length,
       published,
       unpublished,
       retired,
       pendingRetire,
       zeroInventory,
-      totalSales3Day: products.reduce((sum, p) => sum + (p.sales3Day || 0), 0),
-      totalSales7Day: products.reduce((sum, p) => sum + (p.sales7Day || 0), 0),
-      totalSales14Day: products.reduce((sum, p) => sum + (p.sales14Day || 0), 0),
-      lastCheck: products[0]?.lastCheck || null,
+      totalSales3Day: limitedProducts.reduce((sum, p) => sum + (p.sales3Day || 0), 0),
+      totalSales7Day: limitedProducts.reduce((sum, p) => sum + (p.sales7Day || 0), 0),
+      totalSales14Day: limitedProducts.reduce((sum, p) => sum + (p.sales14Day || 0), 0),
+      lastCheck: limitedProducts[0]?.lastCheck || null,
     };
 
     return NextResponse.json({
       success: true,
+      grouped: false,
       summary,
-      products,
+      products: limitedProducts,
     });
 
   } catch (error) {
